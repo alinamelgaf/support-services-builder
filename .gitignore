@@ -1,0 +1,16 @@
+node_modules/
+dist/
+standalone/
+release/
+test-results/
+playwright-report/
+.env
+.env.*
+.local/
+*.local.*
+*.xlsx
+*.docx
+*.zip
+*.log
+*.pem
+*.key

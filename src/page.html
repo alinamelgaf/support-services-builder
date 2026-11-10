@@ -1,0 +1,156 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Support Services Builder</title>
+  <!-- CSP -->
+  <!-- STYLE -->
+  <!-- MANIFEST -->
+</head>
+<body>
+  <header class="topbar">
+    <div class="shell topbar-inner">
+      <span class="brand">SSB</span>
+      <span class="app-label">Support Services Builder</span>
+      <span class="local" id="version">Версия <!-- VERSION --></span>
+    </div>
+  </header>
+
+  <main class="shell">
+    <div class="intro">
+      <h1>Конструктор услуг технического сопровождения</h1>
+      <p>Сравните три варианта поддержки и сформируйте предложение клиенту.</p>
+      <div class="actions pwa-actions" id="pwa-actions" hidden>
+        <button class="button" type="button" id="install" hidden>Установить приложение</button>
+        <button class="button" type="button" id="update">Проверить обновления</button>
+      </div>
+      <p class="notice" id="pwa-notice" role="status" hidden></p>
+    </div>
+
+    <section class="panel catalog-panel" aria-labelledby="catalog-heading">
+      <div class="panel-heading">
+        <div>
+          <h2 id="catalog-heading">Данные Confluence</h2>
+          <p id="catalog-summary">Загрузите JSON-выгрузку с каталогом, базовой конфигурацией и вводными текстами.</p>
+        </div>
+        <div class="actions">
+          <a class="button" id="source-link" target="_blank" rel="noopener noreferrer" hidden>Получить актуальные данные</a>
+          <input type="file" id="catalog-file" accept=".json,application/json" multiple hidden disabled>
+          <button type="button" id="upload" class="button" disabled>Загрузить JSON</button>
+        </div>
+      </div>
+      <details id="sources-panel" class="source-panel">
+        <summary>Настройки источников Confluence</summary>
+        <div class="fields source-fields">
+          <label>Базовый адрес Confluence<input type="url" id="source-base" placeholder="https://wiki.example.invalid/confluence" autocomplete="off"></label>
+          <label>Ключ пространства <span class="optional">необязательно</span><input id="source-space" autocomplete="off"></label>
+        </div>
+        <div class="fields source-fields" id="source-labels"></div>
+        <p>Заполните адрес и первые три метки для ссылки на REST. Остальные метки зарезервированы для следующих версий.</p>
+        <button class="button" type="button" id="save-sources">Сохранить источники локально</button>
+        <p id="sources-notice" class="notice" role="status" hidden></p>
+      </details>
+      <button class="button" type="button" id="reset-batch" hidden>Начать новую выгрузку</button>
+      <p id="catalog-notice" class="notice" role="status" hidden></p>
+      <details id="issues" hidden>
+        <summary id="issues-summary"></summary>
+        <ul id="issue-list"></ul>
+      </details>
+    </section>
+
+    <section class="panel setup" aria-labelledby="proposal-heading">
+      <h2 id="proposal-heading">Настройки предложения</h2>
+      <div class="fields">
+        <label>Клиент <span class="optional">необязательно</span>
+          <input type="text" id="client" maxlength="180" placeholder="Название компании">
+        </label>
+        <label>Название предложения <span class="optional">необязательно</span>
+          <input type="text" id="title" maxlength="180" placeholder="Заголовок для документов">
+        </label>
+      </div>
+      <fieldset>
+        <legend>Вариант для клиента</legend>
+        <div class="variants" id="variants"></div>
+      </fieldset>
+      <fieldset class="introduction">
+        <legend>Вводный текст <span class="intro-variant" id="intro-variant"></span></legend>
+        <div class="actions editor-tools" id="intro-toolbar" role="group" aria-label="Форматирование вводного текста">
+          <button class="button tool bold" type="button" data-command="bold" aria-label="Жирный" title="Жирный">Ж</button>
+          <button class="button tool italic" type="button" data-command="italic" aria-label="Курсив" title="Курсив">К</button>
+          <button class="button tool underline" type="button" data-command="underline" aria-label="Подчёркивание" title="Подчёркивание">Ч</button>
+          <button class="button tool" type="button" data-command="insertUnorderedList" aria-label="Маркированный список">• Список</button>
+          <button class="button tool" type="button" data-command="insertOrderedList" aria-label="Нумерованный список">1. Список</button>
+          <button class="button tool" type="button" data-command="createLink">Ссылка</button>
+          <button class="button tool" type="button" data-command="undo" disabled>Отмена</button>
+          <button class="button tool" type="button" data-command="redo" disabled>Повтор</button>
+        </div>
+        <div id="intro-text" class="intro-editor" contenteditable="true" role="textbox" aria-multiline="true"
+             aria-label="Вводный текст" aria-describedby="intro-variant"></div>
+        <p class="editor-feedback" id="intro-feedback" role="status"></p>
+        <div class="intro-options">
+          <label><input type="checkbox" id="intro-excel"> Добавить в Excel</label>
+          <label><input type="checkbox" id="intro-word" checked> Добавить в Word</label>
+        </div>
+      </fieldset>
+    </section>
+
+    <section class="panel comparison" aria-labelledby="comparison-heading">
+      <div class="panel-heading">
+        <div>
+          <h2 id="comparison-heading">Сравнение вариантов</h2>
+          <p id="comparison-help">Отметьте включённые услуги и укажите параметры, если они нужны.</p>
+        </div>
+        <div class="actions">
+          <button type="button" data-format="excel" class="button" disabled>Скачать Excel</button>
+          <button type="button" data-format="word" class="button" disabled>Скачать Word</button>
+        </div>
+      </div>
+      <div class="defaults-tools">
+        <h3>Стандарт и настройки менеджера</h3>
+        <p id="defaults-layer"></p>
+        <div class="actions">
+          <button type="button" id="apply-standard" class="button" disabled>Применить стандарт Confluence</button>
+          <button type="button" id="save-defaults" class="button" disabled>Зафиксировать локально</button>
+          <button type="button" id="reset" class="button" disabled>Восстановить локальные настройки</button>
+          <button type="button" id="export-defaults" class="button" disabled>Скачать настройки</button>
+          <button type="button" id="import-defaults" class="button">Загрузить настройки</button>
+          <input type="file" id="defaults-file" accept=".json,application/json" hidden>
+        </div>
+        <p id="defaults-notice" class="notice" role="status" hidden></p>
+        <p id="conflict-notice" class="notice error" role="status" hidden></p>
+      </div>
+      <p id="export-notice" class="notice" role="status" hidden></p>
+      <div id="empty" class="empty">После загрузки каталога здесь появятся услуги и настройки пакетов.</div>
+      <p id="scroll-hint" class="scroll-hint" hidden>Прокрутите таблицу вправо, чтобы увидеть все варианты.</p>
+      <div id="table-wrap" class="table-wrap" hidden tabindex="0" role="region" aria-label="Сравнительная таблица">
+        <table id="matrix" aria-describedby="comparison-help">
+          <colgroup><col class="id-col"><col class="service-col"><col class="document-col"><col><col><col></colgroup>
+          <thead><tr id="columns"><th scope="col">ID</th><th scope="col">Услуга</th><th scope="col">Включить в документ</th></tr></thead>
+          <tbody id="services"></tbody>
+        </table>
+      </div>
+    </section>
+  </main>
+
+  <dialog id="service-dialog" aria-labelledby="service-heading">
+    <div class="panel-heading">
+      <div>
+        <p class="service-id" id="detail-id"></p>
+        <h2 id="service-heading"></h2>
+      </div>
+      <button type="button" class="button" id="close-dialog">Закрыть</button>
+    </div>
+    <div class="details-body">
+      <h3>Описание услуги</h3>
+      <div class="service-copy" id="detail-description"></div>
+      <h3>Условия предоставления</h3>
+      <div class="service-copy" id="detail-conditions"></div>
+      <h3>Основная услуга</h3>
+      <div class="service-copy" id="detail-base"></div>
+      <a id="detail-source" target="_blank" rel="noopener noreferrer">Открыть карточку Confluence</a>
+    </div>
+  </dialog>
+  <!-- SCRIPT -->
+</body>
+</html>

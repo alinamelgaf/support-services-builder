@@ -1,0 +1,155 @@
+{
+  "results": [
+    {
+      "id": "10",
+      "title": "Учебная страница 10",
+      "metadata": {
+        "labels": {
+          "results": [
+            {
+              "name": "demo_catalog"
+            }
+          ]
+        }
+      },
+      "body": {
+        "storage": {
+          "value": "<ac:structured-macro ac:name=\"details\"><ac:rich-text-body><table><tr><th>ID услуги</th><td>TS-10.A</td></tr><tr><th>Наименование</th><td>Пример TS-10.A</td></tr><tr><th>Описание услуги</th><td><p>Учебное описание <b>TS-10.A</b>.</p><ul><li>Пункт примера.</li></ul></td></tr><tr><th>Условия предоставления</th><td><p>Учебное условие.</p></td></tr><tr><th>Основная услуга</th><td>TS-10</td></tr></table></ac:rich-text-body></ac:structured-macro>"
+        }
+      }
+    },
+    {
+      "id": "11",
+      "title": "Учебная страница 11",
+      "metadata": {
+        "labels": {
+          "results": [
+            {
+              "name": "demo_catalog"
+            }
+          ]
+        }
+      },
+      "body": {
+        "storage": {
+          "value": "<ac:structured-macro ac:name=\"details\"><ac:rich-text-body><table><tr><th>ID услуги</th><td>TS-10</td></tr><tr><th>Наименование</th><td>Пример TS-10</td></tr><tr><th>Описание услуги</th><td><p>Учебное описание <b>TS-10</b>.</p><ul><li>Пункт примера.</li></ul></td></tr><tr><th>Условия предоставления</th><td><p>Учебное условие.</p></td></tr><tr><th>Основная услуга</th><td>-</td></tr></table></ac:rich-text-body></ac:structured-macro>"
+        }
+      }
+    },
+    {
+      "id": "12",
+      "title": "Учебная страница 12",
+      "metadata": {
+        "labels": {
+          "results": [
+            {
+              "name": "demo_catalog"
+            }
+          ]
+        }
+      },
+      "body": {
+        "storage": {
+          "value": "<ac:structured-macro ac:name=\"details\"><ac:rich-text-body><table><tr><th>ID услуги</th><td>TS-5.A</td></tr><tr><th>Наименование</th><td>Пример TS-5.A</td></tr><tr><th>Описание услуги</th><td><p>Учебное описание <b>TS-5.A</b>.</p><ul><li>Пункт примера.</li></ul></td></tr><tr><th>Условия предоставления</th><td><p>Учебное условие.</p></td></tr><tr><th>Основная услуга</th><td>TS-5</td></tr></table></ac:rich-text-body></ac:structured-macro>"
+        }
+      }
+    },
+    {
+      "id": "13",
+      "title": "Учебная страница 13",
+      "metadata": {
+        "labels": {
+          "results": [
+            {
+              "name": "demo_catalog"
+            }
+          ]
+        }
+      },
+      "body": {
+        "storage": {
+          "value": "<ac:structured-macro ac:name=\"details\"><ac:rich-text-body><table><tr><th>ID услуги</th><td>TS-2</td></tr><tr><th>Наименование</th><td>Пример TS-2</td></tr><tr><th>Описание услуги</th><td><p>Учебное описание <b>TS-2</b>.</p><ul><li>Пункт примера.</li></ul></td></tr><tr><th>Условия предоставления</th><td><p>Учебное условие.</p></td></tr><tr><th>Основная услуга</th><td>-</td></tr></table></ac:rich-text-body></ac:structured-macro>"
+        }
+      }
+    },
+    {
+      "id": "14",
+      "title": "Учебная страница 14",
+      "metadata": {
+        "labels": {
+          "results": [
+            {
+              "name": "demo_catalog"
+            }
+          ]
+        }
+      },
+      "body": {
+        "storage": {
+          "value": "<ac:structured-macro ac:name=\"details\"><ac:rich-text-body><table><tr><th>ID услуги</th><td>TS-1.A</td></tr><tr><th>Наименование</th><td>Пример TS-1.A</td></tr><tr><th>Описание услуги</th><td><p>Учебное описание <b>TS-1.A</b>.</p><ul><li>Пункт примера.</li></ul></td></tr><tr><th>Условия предоставления</th><td><p>Учебное условие.</p></td></tr><tr><th>Основная услуга</th><td>TS-1</td></tr></table></ac:rich-text-body></ac:structured-macro>"
+        }
+      }
+    },
+    {
+      "id": "15",
+      "title": "Учебная страница 15",
+      "metadata": {
+        "labels": {
+          "results": [
+            {
+              "name": "demo_catalog"
+            }
+          ]
+        }
+      },
+      "body": {
+        "storage": {
+          "value": "<ac:structured-macro ac:name=\"details\"><ac:rich-text-body><table><tr><th>ID услуги</th><td>TS-1</td></tr><tr><th>Наименование</th><td>Пример TS-1</td></tr><tr><th>Описание услуги</th><td><p><strong>Демонстрация</strong> <a href=\"https://wiki.example.invalid/confluence/display/DEMO/Example\">Справочная карточка</a> и <a href=\"https://manual.example.invalid/guide\">открытая инструкция</a>.</p><ul><li>Учебный пункт</li></ul></td></tr><tr><th>Условия предоставления</th><td><p>Учебное условие.</p></td></tr><tr><th>Основная услуга</th><td>-</td></tr></table></ac:rich-text-body></ac:structured-macro>"
+        }
+      }
+    },
+    {
+      "id": "60",
+      "title": "Учебная страница 60",
+      "metadata": {
+        "labels": {
+          "results": [
+            {
+              "name": "demo_defaults"
+            }
+          ]
+        }
+      },
+      "body": {
+        "storage": {
+          "value": "<table><tr><th>Карточка услуги</th><th>ID услуги</th><th>В документ</th><th>Standard</th><th>Extended</th><th>Managed Service</th></tr><tr><td><a href=\"https://wiki.example.invalid/confluence/display/DEMO/Example\">Справочная карточка</a></td><td>ts-1</td><td>+</td><td>12 часов</td><td>+</td><td>-</td></tr><tr><td><a href=\"https://wiki.example.invalid/confluence/display/DEMO/Example\">Справочная карточка</a></td><td>TS-1.A</td><td>+</td><td>-</td><td>3 часа</td><td>+</td></tr><tr><td><a href=\"https://wiki.example.invalid/confluence/display/DEMO/Example\">Справочная карточка</a></td><td>TS-2</td><td>-</td><td>+</td><td>-</td><td>+</td></tr><tr><td><a href=\"https://wiki.example.invalid/confluence/display/DEMO/Example\">Справочная карточка</a></td><td>TS-5.A</td><td>+</td><td>+</td><td>-</td><td>-</td></tr><tr><td><a href=\"https://wiki.example.invalid/confluence/display/DEMO/Example\">Справочная карточка</a></td><td>TS-10</td><td>+</td><td>-</td><td>+</td><td>+</td></tr><tr><td><a href=\"https://wiki.example.invalid/confluence/display/DEMO/Example\">Справочная карточка</a></td><td>TS-10.A</td><td>+</td><td>-</td><td>-</td><td>По запросу</td></tr></table>"
+        }
+      }
+    },
+    {
+      "id": "61",
+      "title": "Учебная страница 61",
+      "metadata": {
+        "labels": {
+          "results": [
+            {
+              "name": "demo_intros"
+            }
+          ]
+        }
+      },
+      "body": {
+        "storage": {
+          "value": "<table><tr><th>Вариант поддержки</th><th>Вводный текст</th></tr><tr><td>Standard</td><td><p><b>Пример Standard</b> <a href=\"https://wiki.example.invalid/confluence/display/DEMO/Example\">Справочная карточка</a></p><ul><li>Учебный список</li></ul></td></tr><tr><td>Extended</td><td><p><em>Пример Extended</em> и <a href=\"https://manual.example.invalid/guide\">инструкция</a>.</p><p>Второй абзац.</p></td></tr><tr><td>Managed Service</td><td><p><u>Пример Managed Service</u></p><ol><li>Учебный шаг</li></ol></td></tr></table>"
+        }
+      }
+    }
+  ],
+  "start": 0,
+  "limit": 25,
+  "size": 8,
+  "totalSize": 8,
+  "_links": {
+    "base": "https://wiki.example.invalid/confluence"
+  }
+}

@@ -1,0 +1,9 @@
+{
+  "default_option": "Standard",
+  "options": [
+    { "code": "Standard", "name": "Стандартная поддержка" },
+    { "code": "Extended", "name": "Расширенная поддержка" },
+    { "code": "Managed Service", "name": "Управляемая поддержка" }
+  ],
+  "values": {}
+}
