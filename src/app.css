@@ -142,6 +142,7 @@ dialog .service-id { margin: 0 0 5px; }
 .document-sections small { display: block; margin-left: 25px; overflow-wrap: anywhere; }
 .document-sections small:empty { display: none; }
 .sla-modes { display: grid; gap: 5px; margin: 6px 0 4px 25px; }
+.sla-formats { display: grid; gap: 5px; margin: 2px 0 3px 25px; }
 .defaults-tools { margin: 0 23px 15px; padding: 10px 12px; border: 1px solid var(--line); border-radius: 7px; }
 .defaults-tools h3 { margin: 0 0 7px; font-size: 14px; }
 .comparison .defaults-tools .notice { margin: 8px 0 0; }

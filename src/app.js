@@ -38,6 +38,7 @@ let defaultsUnsaved = false;
 let sourcesUnsaved = false;
 const downloads = [...document.querySelectorAll("[data-format]")];
 const slaModes = [...document.querySelectorAll('input[name="sla-mode"]')];
+const slaFormats = [...document.querySelectorAll('input[name="sla-format"]')];
 
 function renderDocumentOptions() {
   for (const key of Object.keys(SECTION_LABELS)) {
@@ -47,9 +48,16 @@ function renderDocumentOptions() {
     checkbox.checked = !reason && state.documentOptions.included[key];
     $(`#reason-${key}`).textContent = reason;
   }
+  const slaDisabled = $("#include-sla").disabled || !$("#include-sla").checked;
   for (const radio of slaModes) {
-    radio.disabled = $("#include-sla").disabled || !$("#include-sla").checked;
+    radio.disabled = slaDisabled;
     radio.checked = radio.value === state.documentOptions.slaMode;
+  }
+  const showFormats = $("#include-sla").checked && state.documentOptions.slaMode === "all";
+  $("#sla-formats").hidden = !showFormats;
+  for (const radio of slaFormats) {
+    radio.disabled = slaDisabled || !showFormats;
+    radio.checked = radio.value === state.documentOptions.slaFormat;
   }
 }
 
@@ -63,6 +71,13 @@ for (const key of Object.keys(SECTION_LABELS)) {
 for (const radio of slaModes) {
   radio.addEventListener("change", () => {
     state.documentOptions.slaMode = radio.value;
+    renderDocumentOptions();
+    draftChanged();
+  });
+}
+for (const radio of slaFormats) {
+  radio.addEventListener("change", () => {
+    state.documentOptions.slaFormat = radio.value;
     draftChanged();
   });
 }

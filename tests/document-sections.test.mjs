@@ -70,7 +70,7 @@ test("rejects invalid additional tables without disabling independent valid sect
     const result = read(referenceFixture({ alterSeverity }));
     assert.match(result.sections.severity.error, error);
     assert.equal(result.sections.sla.data.length, 12);
-    assert.equal(proposal(result, "Extended", { included }).sections.sla.groups[0].label, "10");
+    assert.equal(proposal(result, "Extended", { included }).sections.sla[0].groups[0].label, "10");
   }
   const broken = referenceFixture();
   broken.results.at(-1).body.storage.value = broken.results.at(-1).body.storage.value.replace("Определение RU", "Ошибка");
@@ -81,22 +81,31 @@ test("rejects invalid additional tables without disabling independent valid sect
   assert.deepEqual(Object.keys(proposal(result, "Extended", { included }).sections), ["intro", "sla", "severity"]);
 });
 
-test("builds both SLA views and automatically selects the introduction for each package", () => {
+test("builds all SLA views and automatically selects the introduction for each package", () => {
   const result = read();
   assert.equal(documentOptions().slaMode, "selected");
+  assert.equal(documentOptions({ slaMode: "all" }).slaFormat, "comparison");
   assert.deepEqual(Object.keys(proposal(result, "Extended").sections), ["intro"]);
   assert.deepEqual(proposal(result, "Extended", { included: { intro: false } }).sections, {});
   for (const [index, selected] of packages.entries()) {
-    const single = proposal(result, selected, { included }).sections;
+    const single = proposal(result, selected, { included, slaFormat: "separate" }).sections;
     const all = proposal(result, selected, { included, slaMode: "all" }).sections;
-    assert.equal(single.sla.headers.at(-1), selected);
-    assert.equal(all.sla.headers[2 + index], selected + " ✓");
-    assert.equal(all.sla.selectedColumn, 2 + index);
+    const split = proposal(result, selected, { included, slaMode: "all", slaFormat: "separate" }).sections.sla;
+    const [only] = single.sla;
+    const [comparison] = all.sla;
+    assert.equal(single.sla.length, 1);
+    assert.equal(only.headers.at(-1), selected);
+    assert.equal(comparison.headers[2 + index], selected + " ✓");
+    assert.equal(comparison.selectedColumn, 2 + index);
+    assert.deepEqual(split.map(({ headers }) => headers.at(-1)), packages);
+    assert.equal(split.filter(({ highlighted }) => highlighted).length, 1);
+    assert.equal(split[index].highlighted, true);
     assert.match(plainText(single.intro), new RegExp("Пример " + selected));
-    assert.equal(single.sla.groups.length, 4);
-    assert.deepEqual(single.sla.groups[0].rows.map(([label]) => label), SLA_METRICS);
-    for (const [i, group] of single.sla.groups.entries()) {
-      assert.deepEqual(group.rows.map((row) => row[1]), all.sla.groups[i].rows.map((row) => row[1 + index]));
+    assert.equal(only.groups.length, 4);
+    assert.deepEqual(only.groups[0].rows.map(([label]) => label), SLA_METRICS);
+    assert.deepEqual(only.groups, split[index].groups);
+    for (const [i, group] of only.groups.entries()) {
+      assert.deepEqual(group.rows.map((row) => row[1]), comparison.groups[i].rows.map((row) => row[1 + index]));
     }
   }
 });
@@ -142,6 +151,61 @@ test("exports optional Word sections and Excel sheets in order with selected SLA
     assert.doesNotMatch(sla, /11 —|90 —|<w:tblGridChange/);
     if (slaMode === "all") assert.match(sla, /Extended ✓.*?w:fill="E5F3EE"/);
     else assert.doesNotMatch(sla, /Standard|Managed Service/);
+    const slaRows = [...sla.matchAll(/<w:tr>.*?<\/w:tr>/gs)].map(([row]) => row).slice(1);
+    const expectedRows = data.sections.sla[0].groups.flatMap(({ rows }) => rows);
+    assert.equal(slaRows.length, expectedRows.length);
+    for (const [index, values] of expectedRows.entries()) {
+      for (const [col, value] of values.entries()) {
+        assert.equal(sheet.getCell(index + 3, col + 2).text, value);
+        assert.ok(slaRows[index].includes(value));
+      }
+    }
+    const severity = xml.slice(xml.indexOf("Уровни критичности"), xml.indexOf("Допущения и ограничения"));
+    assert.equal([...severity.matchAll(/<w:tbl>/g)].length, 1);
+    assert.equal([...severity.matchAll(/<w:tr>/g)].length, 12);
+    assert.match(severity, /<w:tblHeader\/>.*?Код.*?Наименование.*?Краткое описание.*?Полное описание/);
+    assert.match(severity, /<w:numPr>.*?Пользователи не могут/);
+    const level11 = [...severity.matchAll(/<w:tr>.*?<\/w:tr>/gs)][2][0];
+    const cells = [...level11.matchAll(/<w:tc>.*?<\/w:tc>/gs)].map(([cell]) => cell);
+    assert.equal(cells.length, 4);
+    assert.match(cells[0], />11<\/w:t>/);
+    assert.doesNotMatch(cells[2], /<w:t[ >]/);
+    assert.match(cells[3], /Учебное определение 11/);
+  }
+});
+
+test("exports three sequential SLA tables with every original value and highlights only the selected table", async () => {
+  const result = read();
+  const model = proposal(result, "Extended", { included, slaMode: "all", slaFormat: "separate" });
+  const [bytes, docx] = await Promise.all([generateExcel(model), generateWord(model)]);
+  const workbook = new ExcelJS.Workbook();
+  await workbook.xlsx.load(bytes);
+  const sheet = workbook.getWorksheet("Матрица SLA");
+  const zip = await JSZip.loadAsync(await docx.arrayBuffer());
+  const xml = await zip.file("word/document.xml").async("string");
+  const sla = xml.slice(xml.indexOf("Матрица SLA"), xml.indexOf("Уровни критичности"));
+  const tables = [...sla.matchAll(/<w:tbl>.*?<\/w:tbl>/gs)].map(([table]) => table);
+  assert.equal(tables.length, 3);
+  const captions = [];
+  sheet.eachRow((row) => {
+    if (model.sections.sla.some(({ caption }) => caption === row.getCell(1).value)) captions.push(row.number);
+  });
+  assert.equal(captions.length, 3);
+  assert.equal(sheet.columnCount, 3);
+  for (const [index, code] of packages.entries()) {
+    const caption = captions[index];
+    assert.equal(sheet.getCell(caption + 1, 3).text, code);
+    assert.match(tables[index], new RegExp(`<w:t[^>]*>${code}</w:t>`));
+    assert.equal(tables[index].includes('w:fill="E5F3EE"'), code === "Extended");
+    assert.equal(sheet.getCell(caption + 2, 1).fill.fgColor.argb === "FFE5F3EE", code === "Extended");
+    assert.equal(sheet.getCell(caption + 2, 3).fill.fgColor.argb === "FFE5F3EE", code === "Extended");
+    const expected = result.sections.sla.data.filter(({ support }) => support === code).flatMap(({ values }) => values);
+    const rows = [...tables[index].matchAll(/<w:tr>.*?<\/w:tr>/gs)].map(([row]) => row).slice(1);
+    assert.equal(rows.length, expected.length);
+    for (const [i, value] of expected.entries()) {
+      assert.equal(sheet.getCell(caption + 2 + i, 3).text, value);
+      assert.ok(rows[i].includes(value));
+    }
   }
 });
 

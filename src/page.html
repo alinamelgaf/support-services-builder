@@ -88,6 +88,10 @@
             <div class="sla-modes" role="group" aria-label="Представление матрицы SLA">
               <label><input type="radio" name="sla-mode" value="selected"> Только выбранный уровень поддержки</label>
               <label><input type="radio" name="sla-mode" value="all"> Все уровни с выделением выбранного</label>
+              <div class="sla-formats" id="sla-formats" role="group" aria-label="Представление всех уровней SLA" hidden>
+                <label><input type="radio" name="sla-format" value="separate"> Отдельные таблицы по уровням поддержки</label>
+                <label><input type="radio" name="sla-format" value="comparison"> Одна сравнительная таблица</label>
+              </div>
             </div>
           </div>
           <div><label><input type="checkbox" id="include-severity" aria-describedby="reason-severity"> Уровни критичности</label><small id="reason-severity"></small></div>

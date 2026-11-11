@@ -9,6 +9,7 @@ export const SECTION_LABELS = {
   glossary: "Глоссарий",
 };
 
+export const SEVERITY_HEADERS = ["Код", "Наименование", "Краткое описание", "Полное описание"];
 export const SLA_CODES = ["10", "20", "30", "80"];
 export const SEVERITY_CODES = ["10", "11", "12", "20", "21", "22", "30", "31", "32", "80", "90"];
 export const SLA_METRICS = [
@@ -22,6 +23,7 @@ export function documentOptions(saved) {
       key, key !== "raci" && (typeof saved?.included?.[key] === "boolean" ? saved.included[key] : key === "intro"),
     ])),
     slaMode: saved?.slaMode === "all" ? "all" : "selected",
+    slaFormat: saved?.slaFormat === "separate" ? "separate" : "comparison",
   };
 }
 
@@ -34,7 +36,7 @@ export function sectionReason(key, sources, selected) {
 }
 
 export function buildDocumentSections(sources, options, selected, codes, bases) {
-  const { included, slaMode } = documentOptions(options);
+  const { included, slaMode, slaFormat } = documentOptions(options);
   const data = (key) => included[key] && !sectionReason(key, sources, selected) ? sources[key].data : null;
   const clean = (blocks) => withoutSourceLinks(blocks, bases);
   const intro = data("intro");
@@ -48,14 +50,19 @@ export function buildDocumentSections(sources, options, selected, codes, bases) 
     // The reference can supply labels even when its section is excluded.
     const names = new Map(sources.severity?.data?.map(({ code, name }) => [code, name]));
     const records = new Map(matrix.map(({ code, support, values }) => [code + "|" + support, values]));
-    sla = {
-      headers: ["Уровень критичности", "Показатель", ...packages.map((code) => code === selected && packages.length > 1 ? code + " ✓" : code)],
-      selectedColumn: 2 + packages.indexOf(selected),
+    const table = (columns) => ({
+      headers: ["Уровень критичности", "Показатель", ...columns.map((code) => code === selected && columns.length > 1 ? code + " ✓" : code)],
+      selectedColumn: columns.length > 1 ? 2 + columns.indexOf(selected) : -1,
       groups: SLA_CODES.map((code) => ({
         label: names.has(code) ? code + " — " + names.get(code) : code,
-        rows: SLA_METRICS.map((metric, index) => [metric, ...packages.map((support) => records.get(code + "|" + support)[index])]),
+        rows: SLA_METRICS.map((metric, index) => [metric, ...columns.map((support) => records.get(code + "|" + support)[index])]),
       })),
-    };
+    });
+    sla = slaMode === "all" && slaFormat === "separate"
+      ? packages.map((code) => ({
+        ...table([code]), caption: code === selected ? code + " ✓ — Предложение" : code, highlighted: code === selected,
+      }))
+      : [table(packages)];
   }
   return {
     ...(intro && { intro: clean(intro[selected]) }),

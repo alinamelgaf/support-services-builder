@@ -12,6 +12,7 @@ const keys = ["sla", "severity", "assumptions", "glossary"];
 const names = ["Матрица SLA", "Уровни критичности", "Допущения и ограничения", "Глоссарий"];
 const include = (page, key) => page.locator("#include-" + key);
 const mode = (page, value) => page.locator(`input[name="sla-mode"][value="${value}"]`);
+const slaFormat = (page, value) => page.locator(`input[name="sla-format"][value="${value}"]`);
 const variant = (page, code) => page.locator(`input[name="proposal-variant"][value="${code}"]`);
 
 async function upload(page, data) {
@@ -67,6 +68,7 @@ for (const [index, channel] of channels.entries()) {
       assert.equal(await include(page, key).isChecked(), false);
     }
     assert.equal(await mode(page, "selected").isDisabled(), true);
+    assert.equal(await page.locator("#sla-formats").isVisible(), false);
     await include(page, "intro").uncheck();
     for (const format of ["excel", "word"]) {
       const empty = await exportFile(page, format);
@@ -77,6 +79,7 @@ for (const [index, channel] of channels.entries()) {
     await include(page, "intro").check();
     for (const key of keys) await include(page, key).check();
     assert.equal(await mode(page, "selected").isChecked(), true);
+    assert.equal(await page.locator("#sla-formats").isVisible(), false);
     for (const [code, reaction] of [["Standard", "45 минут"], ["Managed Service", "35 минут"], ["Extended", "20 минут"]]) {
       await variant(page, code).check();
       const word = await exportFile(page, "word");
@@ -85,20 +88,32 @@ for (const [index, channel] of channels.entries()) {
     }
     await page.locator("#client").fill("Учебная организация");
     await page.locator("#title").fill("Учебное предложение по техническому сопровождению");
-    for (const slaMode of ["selected", "all"]) {
-      await mode(page, slaMode).check();
+    await mode(page, "all").check();
+    assert.equal(await slaFormat(page, "comparison").isChecked(), true);
+    for (const layout of ["comparison", "separate"]) {
+      await slaFormat(page, layout).check();
       for (const format of ["excel", "word"]) {
         const extension = format === "excel" ? "xlsx" : "docx";
-        const sample = output && !index ? join(output, `SLA-Extended-${slaMode}.${extension}`) : undefined;
+        const sample = output && !index ? join(output, `SLA-Extended-${layout}.${extension}`) : undefined;
         const file = await exportFile(page, format, sample);
         for (const name of names) assert.ok(file.sections.includes(name));
         assert.match(file.text, /Пример Extended/);
         assert.match(file.text, /Учебная организация/);
         assert.match(file.text, /20 минут/);
-        assert.equal(file.text.includes("Extended ✓"), slaMode === "all");
+        assert.match(file.text, /Extended ✓/);
+        assert.equal(file.text.includes("Extended ✓ — Предложение"), layout === "separate");
         assert.doesNotMatch(file.text + file.sections, /wiki\.example\.invalid|BAD_SCRIPT|Матрица RACI/);
       }
     }
+    await mode(page, "selected").check();
+    assert.equal(await page.locator("#sla-formats").isVisible(), false);
+    for (const format of ["excel", "word"]) {
+      const single = await exportFile(page, format);
+      assert.match(single.text, /20 минут/);
+      assert.doesNotMatch(single.text, /Extended ✓|35 минут|45 минут/);
+    }
+    await mode(page, "all").check();
+    assert.equal(await slaFormat(page, "separate").isChecked(), true);
     for (const [i, key] of keys.entries()) {
       await include(page, key).uncheck();
       for (const format of ["excel", "word"]) {
@@ -113,6 +128,7 @@ for (const [index, channel] of channels.entries()) {
     await page.getByText("Черновик восстановлен на этом устройстве.").waitFor();
     for (const key of keys) assert.equal(await include(page, key).isChecked(), true);
     assert.equal(await mode(page, "all").isChecked(), true);
+    assert.equal(await slaFormat(page, "separate").isChecked(), true);
     assert.equal(await variant(page, "Extended").isChecked(), true);
     assert.equal(await page.locator("#client").inputValue(), "Учебная организация");
 
@@ -127,6 +143,7 @@ for (const [index, channel] of channels.entries()) {
     await upload(page, updated);
     assert.equal(await include(page, "sla").isChecked(), true);
     assert.equal(await mode(page, "all").isChecked(), true);
+    assert.equal(await slaFormat(page, "separate").isChecked(), true);
     assert.match((await exportFile(page, "word")).text, /25 минут/);
     assert.deepEqual(external, []);
     assert.deepEqual(errors, []);

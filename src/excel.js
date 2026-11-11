@@ -1,7 +1,7 @@
 import ExcelJS from "exceljs";
 import JSZip from "jszip";
 import { COMPARISON_HEADERS, CONDITIONS_TITLE } from "./proposal.js";
-import { SECTION_LABELS } from "./document-sections.js";
+import { SECTION_LABELS, SEVERITY_HEADERS } from "./document-sections.js";
 import { flattenRich } from "./rich-text.js";
 
 const NAVY = "FF243B56";
@@ -104,7 +104,7 @@ function cellValue(segments, bold) {
   })) };
 }
 
-function writeRows(sheet, rows, widths, start, { selected = -1, groupSize = 1 } = {}) {
+function writeRows(sheet, rows, widths, start, { selected = -1, groupSize = 1, highlighted = false } = {}) {
   let rowNumber = start;
   const firstRows = [];
   rows.forEach((row, index) => {
@@ -119,7 +119,7 @@ function writeRows(sheet, rows, widths, start, { selected = -1, groupSize = 1 } 
         cell.value = cellValue(piece?.segments ?? [], col === 0);
         cell.font = { ...FONT, bold: col === 0 };
         cell.alignment = { vertical: "middle", horizontal: selected >= 0 && col >= 2 ? "center" : "left", wrapText: true };
-        cell.fill = fill(col === selected ? PALE_TEAL : Math.floor(index / groupSize) % 2 ? PALE_BLUE : WHITE);
+        cell.fill = fill(highlighted || col === selected ? PALE_TEAL : Math.floor(index / groupSize) % 2 ? PALE_BLUE : WHITE);
         if (part === 0 && index % groupSize === 0) cell.border = { top: { style: "thin", color: { argb: GRAY } } };
         height = Math.max(height, 8 + 15 * (piece?.lines ?? 1));
       });
@@ -132,45 +132,68 @@ function writeRows(sheet, rows, widths, start, { selected = -1, groupSize = 1 } 
   return firstRows;
 }
 
-function addReferenceSheets(workbook, sections) {
-  function referenceSheet(key, headers, widths, rows, style) {
-    const title = SECTION_LABELS[key];
-    const sheet = layout(workbook, title, title, widths, headers, 2);
-    sheet.getRow(2).height = 32;
-    if (style?.selected >= 0) header(sheet.getCell(2, style.selected + 1), headers[style.selected], TEAL);
-    const firstRows = writeRows(sheet, rows, widths, 3, style);
-    return { sheet, firstRows };
+function paginateSla(sheet, groupStarts, height, capacity) {
+  groupStarts.forEach((start, index) => {
+    const end = groupStarts[index + 1] ?? sheet.rowCount + 1;
+    let groupHeight = 0;
+    for (let row = start; row < end; row += 1) groupHeight += sheet.getRow(row).height;
+    if (index && height + groupHeight > capacity) {
+      sheet.getRow(start - 1).addPageBreak(1, 16384);
+      height = sheet.pageSetup.printTitlesRow ? sheet.getRow(2).height : 0;
+    }
+    height += groupHeight;
+  });
+}
+
+function addSlaSheet(workbook, tables) {
+  const title = SECTION_LABELS.sla;
+  const separate = tables.length > 1;
+  const widths = tables[0].headers.length > 3 ? [24, 38, 23, 23, 23] : [27, 48, 39];
+  const sheet = layout(workbook, title, title, widths, tables[0].headers, separate ? 3 : 2, { freezeRows: !separate });
+  // Manual page breaks keep severity groups together on A4 when the groups fit.
+  sheet.pageSetup.fitToPage = false;
+  if (separate) {
+    sheet.pageSetup.orientation = "portrait";
+    sheet.pageSetup.scale = 84;
+    sheet.pageSetup.printTitlesRow = undefined;
   }
-  if (sections.sla) {
-    const { headers, groups, selectedColumn } = sections.sla;
-    const comparative = headers.length > 3;
+  sheet.headerFooter.differentFirst = true;
+  sheet.headerFooter.oddHeader = separate ? "&L" + title : "&L" + title + "&R" + tables[0].headers.slice(2).join("  |  ");
+
+  for (const [index, { headers, groups, selectedColumn, caption, highlighted }] of tables.entries()) {
+    const captionRow = index ? sheet.rowCount + 2 : 2;
+    const headerRow = caption ? captionRow + 1 : 2;
+    if (caption) {
+      if (index) sheet.getRow(captionRow - 1).addPageBreak(1, 16384);
+      sheet.mergeCells(`A${captionRow}:C${captionRow}`);
+      header(sheet.getCell(captionRow, 1), caption, highlighted ? TEAL : NAVY);
+      sheet.getRow(captionRow).height = 25;
+    }
+    headers.forEach((label, col) => header(sheet.getCell(headerRow, col + 1), label,
+      highlighted || col === selectedColumn ? TEAL : NAVY));
+    sheet.getRow(headerRow).height = 32;
     const groupSize = groups[0].rows.length;
     const rows = groups.flatMap(({ label, rows }) => rows.map((cells, index) => [
       runs(index ? "" : label), ...cells.map(runs),
     ]));
-    const { sheet, firstRows } = referenceSheet("sla", headers, comparative ? [24, 38, 23, 23, 23] : [27, 48, 39], rows, {
-      selected: comparative ? selectedColumn : -1,
-      groupSize,
-    });
-    // Keep each severity group together when it fits an A4 landscape page.
-    sheet.pageSetup.fitToPage = false;
-    sheet.headerFooter.differentFirst = true;
-    sheet.headerFooter.oddHeader = "&LМатрица SLA&R" + headers.slice(2).join("  |  ");
+    const firstRows = writeRows(sheet, rows, widths, headerRow + 1, { selected: selectedColumn, groupSize, highlighted });
     const groupStarts = groups.map((_, index) => firstRows[index * groupSize]);
-    let height = sheet.getRow(1).height + sheet.getRow(2).height;
-    groupStarts.forEach((start, index) => {
-      const end = groupStarts[index + 1] ?? sheet.rowCount + 1;
-      let groupHeight = 0;
-      for (let row = start; row < end; row += 1) groupHeight += sheet.getRow(row).height;
-      if (index && height + groupHeight > 520) {
-        sheet.getRow(start - 1).addPageBreak(1, 16384);
-        height = sheet.getRow(2).height;
-      }
-      height += groupHeight;
-    });
+    const height = sheet.getRow(headerRow).height + (caption ? sheet.getRow(captionRow).height : 0)
+      + (index ? 0 : sheet.getRow(1).height);
+    paginateSla(sheet, groupStarts, height, separate ? 900 : 520);
   }
+}
+
+function addReferenceSheets(workbook, sections) {
+  function referenceSheet(key, headers, widths, rows) {
+    const title = SECTION_LABELS[key];
+    const sheet = layout(workbook, title, title, widths, headers, 2);
+    sheet.getRow(2).height = 32;
+    writeRows(sheet, rows, widths, 3);
+  }
+  if (sections.sla) addSlaSheet(workbook, sections.sla);
   if (sections.severity) {
-    referenceSheet("severity", ["Код", "Наименование", "Краткое описание", "Полное описание"], [10, 28, 34, 84],
+    referenceSheet("severity", SEVERITY_HEADERS, [10, 28, 34, 84],
       sections.severity.map(({ code, name, short, description }) => [
         runs(code), runs(name), flattenRich(short, true), flattenRich(description, true),
       ]));

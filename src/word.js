@@ -4,7 +4,7 @@ import {
   UnderlineType, VerticalAlignTable, WidthType,
 } from "docx";
 import { COMPARISON_HEADERS, CONDITIONS_TITLE } from "./proposal.js";
-import { SECTION_LABELS } from "./document-sections.js";
+import { SECTION_LABELS, SEVERITY_HEADERS } from "./document-sections.js";
 import { linkGroups, plainText } from "./rich-text.js";
 
 const NAVY = "243B56";
@@ -42,7 +42,7 @@ function tableCell(text, width, { background, white = false, bold = false, cente
     width: { size: width, type: WidthType.DXA },
     verticalAlign: VerticalAlignTable.CENTER,
     shading: { type: ShadingType.CLEAR, fill: background },
-    children: body.map((paragraph) => new Paragraph({
+    children: (body.length ? body : [{}]).map((paragraph) => new Paragraph({
       ...paragraph, alignment: center ? AlignmentType.CENTER : AlignmentType.LEFT,
       spacing: { before: 40, after: 40, line: 268 }, keepNext,
     })),
@@ -139,41 +139,55 @@ function serviceSections(rows, numbering) {
 const sectionHeading = (key) => new Paragraph({ heading: HeadingLevel.HEADING_1, text: SECTION_LABELS[key], keepNext: true });
 const subheading = (text) => new Paragraph({ heading: HeadingLevel.HEADING_2, text, keepNext: true });
 
-function referenceHeader(headers, widths, selected = -1) {
+function referenceHeader(headers, widths, selected = -1, highlighted = false) {
   return new TableRow({
     tableHeader: true, cantSplit: true,
     children: headers.map((text, column) => tableCell(text, widths[column], {
-      background: column === selected ? TEAL : NAVY, white: true, bold: true, keepNext: true,
+      background: highlighted || column === selected ? TEAL : NAVY, white: true, bold: true, keepNext: true,
     })),
   });
 }
 
-function slaTable({ headers, selectedColumn, groups }) {
+function slaTable({ headers, selectedColumn, highlighted, groups }) {
   const widths = headers.length === 3 ? [2320, 4300, 3697] : [1930, 2457, 1976, 1977, 1977];
-  const selected = headers.length > 3 ? selectedColumn : -1;
   const rows = groups.flatMap(({ label, rows }, group) => {
     const keepGroup = rows.flat().every((text) => text.length <= 110 && text.split("\n").length <= 2);
     return rows.map((cells, index) => new TableRow({
       cantSplit: cells.every((text) => text.length <= 360 && text.split("\n").length <= 8),
       children: [index ? "" : label, ...cells].map((text, column) => tableCell(text, widths[column], {
-        background: column === selected ? PALE_TEAL : group % 2 ? PALE_BLUE : WHITE,
+        background: highlighted || column === selectedColumn ? PALE_TEAL : group % 2 ? PALE_BLUE : WHITE,
         bold: column === 0,
         keepNext: keepGroup && index < rows.length - 1,
       })),
     }));
   });
-  return fixedTable([referenceHeader(headers, widths, selected), ...rows], widths);
+  return fixedTable([referenceHeader(headers, widths, selectedColumn, highlighted), ...rows], widths);
+}
+
+function referenceTable(headers, widths, records, numbering) {
+  const rows = records.map((values, index) => new TableRow({
+    cantSplit: values.every((value) => typeof value === "string"
+      ? value.length <= 300 : plainText(value).length <= 450 && value.length <= 6),
+    children: values.map((value, column) => tableCell(value, widths[column], {
+      background: index % 2 ? PALE_BLUE : WHITE, bold: column === 0, numbering,
+    })),
+  }));
+  return fixedTable([referenceHeader(headers, widths), ...rows], widths);
 }
 
 function referenceSections(sections, numbering) {
   const content = [];
   const paragraphs = (blocks) => [...renderBlocks(blocks, numbering)].map((paragraph) => new Paragraph(paragraph));
-  if (sections.sla) content.push(sectionHeading("sla"), slaTable(sections.sla));
-  if (sections.severity) {
-    content.push(sectionHeading("severity"));
-    for (const { code, name, short, description } of sections.severity) {
-      content.push(subheading(`${code} — ${name}`), ...paragraphs(short), ...paragraphs(description));
+  if (sections.sla) {
+    content.push(sectionHeading("sla"));
+    for (const table of sections.sla) {
+      if (table.caption) content.push(subheading(table.caption));
+      content.push(slaTable(table));
     }
+  }
+  if (sections.severity) {
+    content.push(sectionHeading("severity"), referenceTable(SEVERITY_HEADERS, [760, 2300, 2360, 4897],
+      sections.severity.map(({ code, name, short, description }) => [code, name, short, description]), numbering));
   }
   if (sections.assumptions) {
     content.push(sectionHeading("assumptions"));
@@ -185,16 +199,8 @@ function referenceSections(sections, numbering) {
     }
   }
   if (sections.glossary) {
-    const widths = [2000, 1800, 6517];
-    const rows = sections.glossary.map(({ term, english, definition }, index) => new TableRow({
-      cantSplit: plainText(definition).length <= 450 && definition.length <= 6,
-      children: [term, english, definition].map((text, column) => tableCell(text, widths[column], {
-        background: index % 2 ? PALE_BLUE : WHITE, bold: column === 0, numbering,
-      })),
-    }));
-    content.push(sectionHeading("glossary"), fixedTable([
-      referenceHeader(["Термин RU", "Term ENG", "Определение RU"], widths), ...rows,
-    ], widths));
+    content.push(sectionHeading("glossary"), referenceTable(["Термин RU", "Term ENG", "Определение RU"], [2000, 1800, 6517],
+      sections.glossary.map(({ term, english, definition }) => [term, english, definition]), numbering));
   }
   return content;
 }
