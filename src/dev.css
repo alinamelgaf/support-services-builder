@@ -1,0 +1,22 @@
+.dev-badge {
+  padding: 4px 9px;
+  border-radius: 5px;
+  background: #ffce73;
+  color: #271a06;
+  font-size: 13px;
+  font-weight: 800;
+}
+.dev-notice {
+  margin: 16px 0 0;
+  padding: 9px 12px;
+  border-left: 4px solid #bd7315;
+  background: #fff2da;
+  color: #432b0c;
+}
+.dev-notice pre { white-space: pre-wrap; overflow-wrap: anywhere; }
+.dev-notice .button { margin-top: 7px; }
+@media (max-width: 620px) {
+  .topbar-inner { flex-wrap: wrap; row-gap: 7px; }
+  .app-label { flex: 1 1 160px; }
+  .topbar .local { display: block; }
+}

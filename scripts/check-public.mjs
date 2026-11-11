@@ -6,7 +6,7 @@ import { SAMPLE, STATIC_FILES, STANDALONE_FILES } from "./ship-files.mjs";
 
 const root = process.cwd();
 const realRoot = await realpath(root);
-const known = new Set([".gitignore", ".gitattributes", "README.md", "CHANGELOG.md", "LICENSE", "package.json", "pnpm-lock.yaml", "pnpm-workspace.yaml", "build.mjs", SAMPLE]);
+const known = new Set([".gitignore", ".gitattributes", "AGENTS.md", "README.md", "CHANGELOG.md", "LICENSE", "Start SSB Test.cmd", "package.json", "pnpm-lock.yaml", "pnpm-workspace.yaml", "build.mjs", SAMPLE]);
 const safePath = /^(?:src\/[\w.-]+\.(?:js|css|html)|pwa\/(?:sw\.js|manifest\.webmanifest|icon-(?:192|512)\.png)|config\/presets\.json|(?:tests|scripts)\/[\w.-]+\.mjs|docs\/[\w.-]+\.md|\.github\/workflows\/[\w.-]+\.yml)$/;
 const suspicious = [
   ["private key", /-----BEGIN [A-Z ]*PRIVATE KEY-----\s+[A-Za-z0-9+/]{24}/],

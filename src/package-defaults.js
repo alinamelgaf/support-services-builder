@@ -3,8 +3,10 @@ import { emptyIntroduction, introductionFor, validateIntroduction } from "./intr
 import { BUILTIN_DEFAULTS, OPTIONS } from "./proposal.js";
 
 const FORMAT = "support-services-builder-defaults";
-export const LEGACY_STORAGE_KEY = FORMAT + ":v1";
-export const STORAGE_KEY = FORMAT + ":v2";
+export const LEGACY_STORAGE_KEY = typeof __SSB_STORAGE_PREFIX__ === "string" && __SSB_STORAGE_PREFIX__
+  ? __SSB_STORAGE_PREFIX__ + FORMAT + ":v1" : FORMAT + ":v1";
+export const STORAGE_KEY = typeof __SSB_STORAGE_PREFIX__ === "string" && __SSB_STORAGE_PREFIX__
+  ? __SSB_STORAGE_PREFIX__ + FORMAT + ":v2" : FORMAT + ":v2";
 export const DEFAULTS_FILENAME = "ssb-defaults.json";
 const isRecord = (value) => value !== null && typeof value === "object" && !Array.isArray(value);
 

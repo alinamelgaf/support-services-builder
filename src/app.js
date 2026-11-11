@@ -579,3 +579,24 @@ enablePwa({
   hasPendingImport: () => !$("#reset-batch").hidden,
   isBusy: () => state.busy,
 });
+
+if (typeof __SSB_STORAGE_PREFIX__ === "string" && __SSB_STORAGE_PREFIX__) {
+  window.addEventListener("ssb-dev-refresh", async (event) => {
+    const respond = event.detail;
+    if (typeof respond !== "function") return;
+    if (state.busy) return respond("Дождитесь завершения импорта или экспорта.");
+    if (!$("#reset-batch").hidden) return respond("Завершите импорт всех страниц JSON или очистите ожидающие страницы.");
+    if (!await (draft?.flush() ?? true) || hasUnsavedWork()) return respond("Сначала сохраните черновик и локальные настройки.");
+    if (state.busy || !$("#reset-batch").hidden) return respond("Сначала завершите текущую операцию.");
+    try {
+      const fields = validateSources({
+        base: $("#source-base").value, space: $("#source-space").value,
+        labels: Object.fromEntries(SOURCE_TYPES.map(([key]) => [key, $(`#label-${key}`).value])),
+      });
+      if (JSON.stringify(fields) !== JSON.stringify(sources)) return respond("Сохраните изменённые настройки источников.");
+    } catch {
+      return respond("Проверьте и сохраните настройки источников.");
+    }
+    respond("");
+  });
+}

@@ -1,6 +1,8 @@
 node_modules/
 dist/
+dist-dev/
 standalone/
+standalone-dev/
 release/
 test-results/
 playwright-report/

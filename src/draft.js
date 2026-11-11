@@ -1,4 +1,4 @@
-const DATABASE = "support-services-builder-drafts";
+const DATABASE = (typeof __SSB_STORAGE_PREFIX__ === "string" ? __SSB_STORAGE_PREFIX__ : "") + "support-services-builder-drafts";
 const STORE = "proposals";
 const SCHEMA_VERSION = 1;
 

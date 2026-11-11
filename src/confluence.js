@@ -9,7 +9,7 @@ export const SOURCE_TYPES = [
   ["catalog", "Каталог услуг"], ["defaults", "Базовая конфигурация"], ["intros", "Вводные тексты"],
   ["sla", "SLA"], ["raci", "RACI"], ["assumptions", "Assumptions"], ["glossary", "Глоссарий"],
 ];
-export const SOURCE_KEY = "ssb:confluence-sources:v1";
+export const SOURCE_KEY = (typeof __SSB_STORAGE_PREFIX__ === "string" ? __SSB_STORAGE_PREFIX__ : "") + "ssb:confluence-sources:v1";
 const SUPPORTED = new Set(SOURCE_TYPES.slice(0, 3).map(([key]) => key));
 const record = (item) => Boolean(item && typeof item === "object" && !Array.isArray(item));
 const natural = (value) => Number.isSafeInteger(value) && value >= 0;

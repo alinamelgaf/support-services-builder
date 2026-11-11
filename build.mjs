@@ -11,8 +11,14 @@ const root = dirname(fileURLToPath(import.meta.url));
 const read = (path) => readFile(join(root, path), "utf8");
 const write = (path, content) => writeFile(join(root, path), content, "utf8");
 const integrity = (source) => "sha256-" + createHash("sha256").update(source).digest("base64");
+const args = process.argv.slice(2);
+if (args.length && (args.length !== 1 || args[0] !== "--dev")) throw new Error("Usage: node build.mjs [--dev]");
+const dev = args[0] === "--dev";
+const dist = dev ? "dist-dev" : "dist";
+const standalone = dev ? "standalone-dev" : "standalone";
 const project = JSON.parse(await read("package.json"));
 const { version } = project;
+const displayVersion = version + (dev ? "-dev" : "");
 if (!/^\d+\.\d+\.\d+$/.test(version)) throw new Error("Expected a release version in package.json");
 const [page, stylesheet, release, guideSource, guideCss] = await Promise.all([
   read("src/page.html"), read("src/app.css"), readRelease(), read("docs/USER_GUIDE.md"), read("src/guide.css"),
@@ -44,6 +50,7 @@ const bundle = await build({
   entryPoints: ["src/app.js"],
   bundle: true, format: "iife", platform: "browser", target: ["chrome109", "edge109"],
   minify: true, legalComments: "inline", write: false, charset: "utf8",
+  define: { __SSB_STORAGE_PREFIX__: JSON.stringify(dev ? "ssb-dev:" : "") },
   alias: { exceljs: "exceljs/dist/exceljs.js" },
   plugins: [{
     name: "exceljs-uuid-buffer-check",
@@ -61,9 +68,10 @@ const bundle = await build({
   }],
 });
 const script = bundle.outputFiles[0].text.replace(/<\/script/gi, "<\\/script");
-const css = stylesheet.replace(/\r\n?/g, "\n").replace(/<\/style/gi, "<\\/style");
-const policy = (scriptSource, styleSource, pwa) =>
-  `<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src ${scriptSource}; style-src ${styleSource}; connect-src 'none'; base-uri 'none'; form-action 'none'; img-src ${pwa ? "'self'; manifest-src 'self'; worker-src 'self'" : "data:"}">`;
+const css = (stylesheet + (dev ? "\n" + await read("src/dev.css") : ""))
+  .replace(/\r\n?/g, "\n").replace(/<\/style/gi, "<\\/style");
+const policy = (scriptSource, styleSource, external) =>
+  `<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src ${scriptSource}; style-src ${styleSource}; connect-src 'none'; base-uri 'none'; form-action 'none'; img-src ${external ? "'self'" : "data:"}${dev ? "; worker-src 'none'" : external ? "; manifest-src 'self'; worker-src 'self'" : ""}">`;
 
 function html(csp, styleTag, scriptTag, appIcon, manifest = "") {
   return page.replace(/\r\n?/g, "\n").replace("<!-- CSP -->", () => csp)
@@ -71,32 +79,37 @@ function html(csp, styleTag, scriptTag, appIcon, manifest = "") {
     .replace("<!-- SCRIPT -->", () => scriptTag)
     .replace("<!-- MANIFEST -->", () => manifest)
     .replace("<!-- APP_ICON -->", () => appIcon)
-    .replace("<!-- RELEASE_NOTES -->", () => markdown.render(release.markdown))
-    .replace("<!-- VERSION -->", () => version);
+    .replace("<!-- APP_TITLE -->", () => dev ? "SSB — Тестовая версия" : "Support Services Builder")
+    .replace("<!-- DEV_BADGE -->", () => dev ? '\n      <span class="dev-badge">ТЕСТОВАЯ</span>' : "")
+    .replace("<!-- DEV_NOTICE -->", () => dev ? '\n    <p class="dev-notice">Локальная тестовая сборка. Настройки и черновики хранятся отдельно.</p>' : "")
+    .replace("<!-- RELEASE_NOTES -->", () => markdown.render(release.markdown.replace(`## ${version} —`, `## ${displayVersion} —`)))
+    .replace("<!-- VERSION -->", () => displayVersion);
 }
 
-await Promise.all([mkdir(join(root, "dist"), { recursive: true }), mkdir(join(root, "standalone"), { recursive: true })]);
-const manifest = '<link rel="manifest" href="./manifest.webmanifest"><link rel="icon" href="./icon-192.png"><meta name="theme-color" content="#123150">';
+await Promise.all([dist, standalone].map((folder) => mkdir(join(root, folder), { recursive: true })));
+const headLinks = dev ? '<link rel="icon" href="./icon-192.png">'
+  : '<link rel="manifest" href="./manifest.webmanifest"><link rel="icon" href="./icon-192.png"><meta name="theme-color" content="#123150">';
 const appIcon = await readFile(join(root, "pwa/icon-192.png"));
 const assets = {
-  "index.html": html(policy("'self'", "'self'", true), '<link rel="stylesheet" href="./app.css">', '<script src="./app.js"></script>', "./icon-192.png", manifest),
+  "index.html": html(policy("'self'", "'self'", true), '<link rel="stylesheet" href="./app.css">', '<script src="./app.js"></script>', "./icon-192.png", headLinks),
   "app.js": script, "app.css": css,
-  "manifest.webmanifest": (await read("pwa/manifest.webmanifest")).replace(/\r\n?/g, "\n"),
+  ...(!dev ? { "manifest.webmanifest": (await read("pwa/manifest.webmanifest")).replace(/\r\n?/g, "\n") } : {}),
   "icon-192.png": appIcon,
-  "icon-512.png": await readFile(join(root, "pwa/icon-512.png")),
+  ...(!dev ? { "icon-512.png": await readFile(join(root, "pwa/icon-512.png")) } : {}),
   "user-guide.html": guide,
 };
-const hashes = Object.fromEntries(Object.entries(assets).map(([name, content]) => [name, integrity(content)]));
-const sw = (await read("pwa/sw.js")).replace(/\r\n?/g, "\n");
-const digest = createHash("sha256").update(sw).update(JSON.stringify(hashes)).digest("hex").slice(0, 20);
-const worker = sw.replace("@@VERSION@@", `${version}-${digest}`).replace("@@ASSETS@@", JSON.stringify(hashes));
+if (!dev) {
+  const hashes = Object.fromEntries(Object.entries(assets).map(([name, content]) => [name, integrity(content)]));
+  const sw = (await read("pwa/sw.js")).replace(/\r\n?/g, "\n");
+  const digest = createHash("sha256").update(sw).update(JSON.stringify(hashes)).digest("hex").slice(0, 20);
+  assets["sw.js"] = sw.replace("@@VERSION@@", `${version}-${digest}`).replace("@@ASSETS@@", JSON.stringify(hashes));
+  assets[".nojekyll"] = "";
+}
 await Promise.all([
-  ...Object.entries(assets).map(([name, content]) => writeFile(join(root, "dist", name), content)),
-  ...["dist", "standalone"].map((folder) => copyFile(join(root, "LICENSE"), join(root, folder, "LICENSE"))),
-  write("dist/sw.js", worker),
-  write("dist/.nojekyll", ""),
-  write("standalone/user-guide.html", guide),
-  write("standalone/index.html", html(policy(`'${integrity(script)}'`, `'${integrity(css)}'`), `<style>${css}</style>`, `<script>${script}</script>`,
+  ...Object.entries(assets).map(([name, content]) => writeFile(join(root, dist, name), content)),
+  ...[dist, standalone].map((folder) => copyFile(join(root, "LICENSE"), join(root, folder, "LICENSE"))),
+  write(join(standalone, "user-guide.html"), guide),
+  write(join(standalone, "index.html"), html(policy(`'${integrity(script)}'`, `'${integrity(css)}'`), `<style>${css}</style>`, `<script>${script}</script>`,
     `data:image/png;base64,${appIcon.toString("base64")}`)),
 ]);
 
@@ -128,5 +141,5 @@ for (const name of Object.keys(project.dependencies)) await collectLicenses(awai
 notices.set("uuid@8.3.2", "uuid@8.3.2 · MIT · embedded in ExcelJS\n" + await read("docs/UUID_8_3_2_LICENSE.md"));
 const licenseText = [...notices].sort(([a], [b]) => a < b ? -1 : a > b ? 1 : 0)
   .map(([, notice]) => notice).join("\n\n-----\n\n").replace(/\r\n?/g, "\n");
-await Promise.all([write("dist/THIRD_PARTY_NOTICES.txt", licenseText), write("standalone/THIRD_PARTY_NOTICES.txt", licenseText)]);
-console.log(`Built Support Services Builder ${version} in dist/ and standalone/`);
+await Promise.all([dist, standalone].map((folder) => write(join(folder, "THIRD_PARTY_NOTICES.txt"), licenseText)));
+console.log(`Built Support Services Builder ${displayVersion} in ${dist}/ and ${standalone}/`);
