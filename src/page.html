@@ -11,6 +11,7 @@
 <body>
   <header class="topbar">
     <div class="shell topbar-inner">
+      <img class="app-icon" src="<!-- APP_ICON -->" width="64" height="64" alt="">
       <span class="brand">SSB</span>
       <span class="app-label">Support Services Builder</span>
       <span class="local" id="version">Версия <!-- VERSION --></span>
@@ -21,6 +22,10 @@
     <div class="intro">
       <h1>Конструктор услуг технического сопровождения</h1>
       <p>Сравните три варианта поддержки и сформируйте предложение клиенту.</p>
+      <div class="actions pwa-actions">
+        <a class="button" href="./user-guide.html" target="_blank" rel="noopener noreferrer">Помощь</a>
+        <button class="button" type="button" id="show-release-notes">Что нового</button>
+      </div>
       <div class="actions pwa-actions" id="pwa-actions" hidden>
         <button class="button" type="button" id="install" hidden>Установить приложение</button>
         <button class="button" type="button" id="update">Проверить обновления</button>
@@ -61,6 +66,7 @@
 
     <section class="panel setup" aria-labelledby="proposal-heading">
       <h2 id="proposal-heading">Настройки предложения</h2>
+      <p class="notice" id="draft-notice" role="status" hidden></p>
       <div class="fields">
         <label>Клиент <span class="optional">необязательно</span>
           <input type="text" id="client" maxlength="180" placeholder="Название компании">
@@ -149,6 +155,15 @@
       <h3>Основная услуга</h3>
       <div class="service-copy" id="detail-base"></div>
       <a id="detail-source" target="_blank" rel="noopener noreferrer">Открыть карточку Confluence</a>
+    </div>
+  </dialog>
+  <dialog id="release-notes" aria-labelledby="release-heading">
+    <div class="panel-heading">
+      <h2 id="release-heading">Что нового</h2>
+      <button class="button" type="button" id="close-release-notes">Закрыть</button>
+    </div>
+    <div class="details-body">
+      <!-- RELEASE_NOTES -->
     </div>
   </dialog>
   <!-- SCRIPT -->

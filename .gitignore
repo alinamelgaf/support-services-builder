@@ -10,7 +10,14 @@ playwright-report/
 *.local.*
 *.xlsx
 *.docx
+*.pdf
 *.zip
 *.log
 *.pem
 *.key
+*.pfx
+*.p12
+*.json
+!/package.json
+!/config/presets.json
+!/examples/demo-confluence.json

@@ -29,7 +29,7 @@ jobs:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           ref: refs/tags/${{ steps.target.outputs.tag }}
-          fetch-depth: 1
+          fetch-depth: 0
           persist-credentials: false
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
@@ -38,18 +38,28 @@ jobs:
         id: verify
         env:
           RELEASE_TAG: ${{ steps.target.outputs.tag }}
+          MAIN_COMMIT: ${{ github.sha }}
         run: |
           test "v$(node -p "require('./package.json').version")" = "$RELEASE_TAG"
+          git merge-base --is-ancestor HEAD "$MAIN_COMMIT"
           printf 'commit=%s\n' "$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
       - run: npm install -g pnpm@11.25.0
       - run: pnpm install --frozen-lockfile
       - run: pnpm audit --audit-level low
+      - run: pnpm check:release
       - run: pnpm test
       - run: pnpm build
       - run: node scripts/check-public.mjs --built
       - run: pnpm exec playwright install --with-deps chromium
-      - run: pnpm test:browser
+      - name: Test PWA installation and upgrade over HTTPS
+        env:
+          SSB_NATIVE_INSTALL: '1'
+        run: |
+          export SSB_TEST_TLS_DIR="$(mktemp -d)"
+          openssl req -x509 -newkey rsa:2048 -nodes -days 1 -subj /CN=localhost -addext subjectAltName=IP:127.0.0.1 -keyout "$SSB_TEST_TLS_DIR/key.pem" -out "$SSB_TEST_TLS_DIR/cert.pem"
+          pnpm test:browser
       - run: pnpm package
+      - run: node scripts/release-notes.mjs release/RELEASE_NOTES.md
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: checked-release-zips
@@ -79,9 +89,10 @@ jobs:
         run: |
           test "$(gh api "repos/$GH_REPO/commits/$RELEASE_TAG" --jq .sha)" = "$RELEASE_COMMIT"
           test "$(gh release view "$RELEASE_TAG" --json tagName,isDraft,isPrerelease --jq '.tagName + ":" + (.isDraft|tostring) + ":" + (.isPrerelease|tostring)')" = "$RELEASE_TAG:true:false"
+          test -s RELEASE_NOTES.md
           sha256sum -c SHA256SUMS.txt
           gh release upload "$RELEASE_TAG" ./*.zip SHA256SUMS.txt --clobber
-          gh release edit "$RELEASE_TAG" --draft=false
+          gh release edit "$RELEASE_TAG" --notes-file RELEASE_NOTES.md --draft=false
   pages:
     needs: release
     runs-on: ubuntu-latest

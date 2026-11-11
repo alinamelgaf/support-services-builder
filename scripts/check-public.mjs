@@ -6,7 +6,7 @@ import { SAMPLE, STATIC_FILES, STANDALONE_FILES } from "./ship-files.mjs";
 
 const root = process.cwd();
 const realRoot = await realpath(root);
-const known = new Set([".gitignore", ".gitattributes", "README.md", "package.json", "pnpm-lock.yaml", "pnpm-workspace.yaml", "build.mjs", SAMPLE]);
+const known = new Set([".gitignore", ".gitattributes", "README.md", "CHANGELOG.md", "LICENSE", "package.json", "pnpm-lock.yaml", "pnpm-workspace.yaml", "build.mjs", SAMPLE]);
 const safePath = /^(?:src\/[\w.-]+\.(?:js|css|html)|pwa\/(?:sw\.js|manifest\.webmanifest|icon-(?:192|512)\.png)|config\/presets\.json|(?:tests|scripts)\/[\w.-]+\.mjs|docs\/[\w.-]+\.md|\.github\/workflows\/[\w.-]+\.yml)$/;
 const suspicious = [
   ["private key", /-----BEGIN [A-Z ]*PRIVATE KEY-----\s+[A-Za-z0-9+/]{24}/],
@@ -15,7 +15,7 @@ const suspicious = [
   ["hardcoded credential", /(?:password|client_secret|access_token|api[_-]?key)\s*[=:]\s*["'][A-Za-z0-9+/_.-]{20,}["']/i],
 ];
 const xmlHosts = new Set(["schemas.openxmlformats.org", "www.w3.org"]);
-const binaryNames = /(?:^|\/)icon-(?:192|512)\.png$/;
+const binaryNames = /(?:^|\/)(?:icon-(?:192|512)|guide-(?:install|sources|proposal))\.png$/;
 const fixtureText = JSON.stringify(fixture({ unknown: false, adversarial: false }));
 const isContained = (parent, child) => {
   const difference = relative(parent, child);
@@ -53,7 +53,7 @@ async function scan(path) {
 const paths = execFileSync("git", ["ls-files", "-z"], { encoding: "utf8" }).split("\0").filter(Boolean);
 if (!paths.length) throw new Error("Stage the public files before running the repository scan.");
 for (const path of paths) {
-  if (!(known.has(path) || safePath.test(path))) throw new Error(`Unexpected tracked path: ${path}`);
+  if (!(known.has(path) || safePath.test(path) || /^docs\/assets\/guide-(?:install|sources|proposal)\.png$/.test(path))) throw new Error(`Unexpected tracked path: ${path}`);
   await scan(path);
 }
 if (process.argv.includes("--built")) {
@@ -63,6 +63,8 @@ if (process.argv.includes("--built")) {
     for (const name of allowed) await scan(`${folder}/${name}`);
     const html = await readFile(`${folder}/index.html`, "utf8");
     if (!html.includes("connect-src 'none'")) throw new Error(`Missing network restriction in ${folder}`);
+    const app = folder === "dist" ? await readFile("dist/app.js", "utf8") : html;
+    if (!app.includes("UUID byte range is out of buffer bounds")) throw new Error(`Missing bundled ExcelJS buffer check in ${folder}`);
   }
 }
 console.log(`Public scan passed (${paths.length} tracked files${deny.length ? ", private denylist applied" : ""}).`);

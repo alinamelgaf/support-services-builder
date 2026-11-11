@@ -61,9 +61,39 @@ test("creates an explicit read-only URL from local settings without embedding a 
   assert.throws(() => validateSources({ labels: { catalog: "bad' label" } }), /метки/);
   const url = new URL(queryUrl(sources));
   assert.equal(url.pathname, "/confluence/rest/api/content/search");
+  assert.equal(url.searchParams.get("limit"), "50");
   assert.equal(url.searchParams.get("expand"), "body.storage,metadata.labels");
   assert.match(url.searchParams.get("cql"), /"demo_catalog", "demo_defaults", "demo_intros"/);
 });
+
+for (const pageCount of [28, 50, 51]) {
+  test(`imports ${pageCount} REST results with a 50-result limit`, () => {
+    const catalogCount = pageCount - 2;
+    const data = fixture({ catalogCount, unknown: false, adversarial: false });
+    delete data.totalSize;
+    const batch = createImportBatch();
+    const first = { ...paginate(data, 0, Math.min(50, pageCount)), limit: 50 };
+    let imported = batch.add([first], sources);
+
+    if (pageCount === 51) {
+      assert.equal(new URL(first._links.next, BASE).searchParams.get("start"), "50");
+      assert.equal(imported.complete, false);
+      assert.equal(imported.count, 50);
+      assert.equal(imported.data, null);
+      imported = batch.add([{ ...paginate(data, 50, pageCount), limit: 50 }], sources);
+    } else {
+      assert.equal(first._links.next, undefined);
+    }
+
+    assert.equal(imported.complete, true);
+    assert.equal(imported.count, pageCount);
+    assert.equal(imported.data.services.length, catalogCount);
+    assert.equal(imported.data.usableStandard, true);
+    assert.equal(Object.keys(imported.data.standard.values).length, catalogCount);
+    assert.match(plainText(imported.data.standard.introductions.Extended.blocks), /Пример Extended/);
+    assert.deepEqual(imported.data.issues, []);
+  });
+}
 
 test("reads a horizontal table of introductory texts and rejects incomplete label metadata", () => {
   const data = fixture();
@@ -88,6 +118,8 @@ test("keeps local settings separate from updated standard, with corporate fallba
   const storage = { setItem: (key, value) => values.set(key, value), getItem: (key) => values.get(key) ?? null };
   writeDefaults(storage, saved);
   assert.deepEqual(parseDefaults(serializeDefaults(saved)), saved);
+  const legacySettings = { ...JSON.parse(serializeDefaults(saved)), schemaVersion: 1 };
+  assert.deepEqual(parseDefaults(JSON.stringify(legacySettings)), initialDefaults(saved.values));
   const updated = importRest(fixture({ parameter: "18 часов", extra: true }));
   const local = readDefaults(storage);
   const merged = overlayDefaults(updated.standard, local);

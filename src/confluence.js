@@ -41,7 +41,7 @@ export function queryUrl({ base, space, labels }) {
   const terms = ["type = page", `label IN (${active.map((label) => `"${label}"`).join(", ")})`];
   if (space) terms.push(`space = "${space}"`);
   const search = new URL(base + "/rest/api/content/search");
-  search.search = new URLSearchParams({ cql: terms.join(" AND "), expand: "body.storage,metadata.labels", limit: "25" });
+  search.search = new URLSearchParams({ cql: terms.join(" AND "), expand: "body.storage,metadata.labels", limit: "50" });
   return search.href;
 }
 

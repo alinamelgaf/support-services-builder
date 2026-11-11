@@ -9,6 +9,7 @@ import { renderRich } from "./rich-dom.js";
 import { generateExcel } from "./excel.js";
 import { generateWord } from "./word.js";
 import { enablePwa } from "./pwa.js";
+import { createDraftAutosave, openDraftStore } from "./draft.js";
 
 const $ = (selector) => document.querySelector(selector);
 const state = {
@@ -23,10 +24,16 @@ const state = {
   layer: "corporate",
   base: "",
   conflict: false,
+  catalog: null,
   busy: false,
 };
 const batch = createImportBatch();
 let sources = validateSources();
+let draft;
+let draftUnavailable = false;
+let draftTouched = false;
+let defaultsUnsaved = false;
+let sourcesUnsaved = false;
 const downloads = [...document.querySelectorAll("[data-format]")];
 const introEditor = createIntroEditor({
   editor: $("#intro-text"), toolbar: $("#intro-toolbar"), label: $("#intro-variant"),
@@ -54,6 +61,8 @@ function hasDraftChanges() {
 
 function draftChanged() {
   notice("#export-notice", "");
+  draftTouched = true;
+  draft?.change();
 }
 
 function setBusy(busy) {
@@ -79,7 +88,7 @@ function renderOptions() {
       state.selected = code;
       introEditor.show(code);
       markSelected();
-      notice("#export-notice", "");
+      draftChanged();
     });
     const label = node("label", "", "variant");
     const text = node("span");
@@ -254,15 +263,21 @@ async function importCatalog(files) {
       clearDraft();
     }
     const kind = result.legacy ? "прежний формат каталога" : "страницы REST объединены";
-    $("#catalog-summary").textContent = `Услуг загружено ${state.services.length} из ${result.pages} карточек · ${kind}`;
-    notice("#catalog-notice", errors
+    const catalogMessage = errors
       ? "Есть ошибки импорта. Проверьте список ниже перед формированием документов."
-      : !result.usableStandard ? "Эта загрузка не содержит полного стандарта. Проверьте источники перед использованием настроек Confluence." : "", errors > 0 || !result.usableStandard);
+      : !result.usableStandard ? "Эта загрузка не содержит полного стандарта. Проверьте источники перед использованием настроек Confluence." : "";
+    state.catalog = {
+      issues: result.issues, summary: `Услуг загружено ${state.services.length} из ${result.pages} карточек · ${kind}`,
+      message: catalogMessage, error: Boolean(errors || !result.usableStandard),
+    };
+    $("#catalog-summary").textContent = state.catalog.summary;
+    notice("#catalog-notice", state.catalog.message, state.catalog.error);
     showLayer();
     notice("#conflict-notice", [
       dirty ? "Сохранены текущие правки предложения. Проверьте их перед применением нового стандарта." : "",
       conflicts.length ? `Локальные настройки отличаются от стандарта: ${conflicts.slice(0, 8).join(", ")}${conflicts.length > 8 ? ` и ещё ${conflicts.length - 8}` : ""}. Выберите, какой слой применить.` : "",
     ].filter(Boolean).join(" "), state.conflict);
+    draftChanged();
   } catch (error) {
     notice("#catalog-notice", error.message, true);
   } finally {
@@ -287,7 +302,7 @@ function clearDraft() {
   state.documentOverrides.clear();
   introEditor.load(state.defaults.introductions, state.selected);
   renderServices();
-  draftChanged();
+  notice("#export-notice", "");
 }
 
 function serviceSettings() {
@@ -306,6 +321,7 @@ function applyDefaults(settings) {
     // Копия в памяти доступна для скачивания независимо от хранилища.
   }
   state.local = settings;
+  defaultsUnsaved = !saved;
   applyLayer("local");
   notice("#defaults-notice", saved
     ? "Настройки по умолчанию сохранены в этом браузере. Для переноса можно скачать файл."
@@ -325,6 +341,7 @@ function applyLayer(layer) {
   showLayer();
   notice("#conflict-notice", "");
   setBusy(state.busy);
+  draftChanged();
 }
 
 function fixDefaults() {
@@ -390,6 +407,8 @@ async function exportProposal(format) {
 $("#upload").addEventListener("click", () => $("#catalog-file").click());
 $("#catalog-file").addEventListener("change", (event) => importCatalog([...event.target.files]));
 $("#close-dialog").addEventListener("click", () => $("#service-dialog").close());
+$("#show-release-notes").addEventListener("click", () => $("#release-notes").showModal());
+$("#close-release-notes").addEventListener("click", () => $("#release-notes").close());
 $("#save-defaults").addEventListener("click", fixDefaults);
 $("#export-defaults").addEventListener("click", () => downloadFile(
   new Blob([serializeDefaults(state.local)], { type: "application/json" }), DEFAULTS_FILENAME,
@@ -475,8 +494,10 @@ $("#save-sources").addEventListener("click", () => {
     try {
       window.localStorage.setItem(SOURCE_KEY, text);
       if (window.localStorage.getItem(SOURCE_KEY) !== text) throw new Error();
+      sourcesUnsaved = false;
       notice("#sources-notice", "Источники сохранены в этом браузере.");
     } catch {
+      sourcesUnsaved = true;
       notice("#sources-notice", "Источники доступны в этой вкладке. Браузер не подтвердил сохранение между запусками.", true);
     }
   } catch (error) {
@@ -486,8 +507,75 @@ $("#save-sources").addEventListener("click", () => {
 $("#reset-batch").addEventListener("click", () => {
   if (window.confirm("Удалить ожидающие страницы и начать новую выгрузку?")) resetBatch();
 });
+
+function snapshotProposal() {
+  const { selected, services, overrides, documentOverrides, defaults, standard, hasStandard, layer, base, catalog, conflict } = state;
+  return {
+    selected, services, overrides, documentOverrides, defaults, standard, hasStandard, layer, base, catalog, conflict,
+    client: $("#client").value, title: $("#title").value, introductions: introEditor.values,
+    conflictText: $("#conflict-notice").textContent,
+  };
+}
+
+function restoreProposal(saved) {
+  const { selected, services, overrides, documentOverrides, defaults, standard, hasStandard, layer, base, catalog, conflict } = saved;
+  if (!OPTIONS.some(({ code }) => code === selected) || !Array.isArray(services) ||
+      !(overrides instanceof Map) || !(documentOverrides instanceof Map) || !defaults || !standard ||
+      !OPTIONS.every(({ code }) => Array.isArray(saved.introductions?.[code]?.blocks))) {
+    throw new Error("Сохранённый черновик не удалось прочитать.");
+  }
+  Object.assign(state, { selected, services, overrides, documentOverrides, defaults, standard, hasStandard, layer, base, catalog, conflict });
+  $("#client").value = saved.client;
+  $("#title").value = saved.title;
+  for (const radio of document.querySelectorAll('input[name="proposal-variant"]')) radio.checked = radio.value === selected;
+  introEditor.load(saved.introductions, selected);
+  renderServices();
+  showLayer();
+  if (catalog) {
+    $("#catalog-summary").textContent = catalog.summary;
+    renderIssues(catalog.issues);
+    notice("#catalog-notice", catalog.message, catalog.error);
+  }
+  notice("#conflict-notice", saved.conflictText, conflict);
+}
+
+for (const field of ["#client", "#title"]) $(field).addEventListener("input", draftChanged);
+
+function hasUnsavedWork() {
+  return Boolean(draft?.unsaved || (draftUnavailable && draftTouched) || defaultsUnsaved || sourcesUnsaved);
+}
+
+async function startDraft() {
+  const main = $("main");
+  const draftStatus = (message, error) => notice("#draft-notice", message, error);
+  main.inert = true;
+  setBusy(true);
+  try {
+    const store = await openDraftStore(new URL(".", location.href).pathname);
+    const saved = await store.load();
+    if (saved) {
+      restoreProposal(saved);
+      draftStatus("Черновик восстановлен на этом устройстве.");
+    }
+    draft = createDraftAutosave(store, snapshotProposal, draftStatus);
+  } catch {
+    draftUnavailable = true;
+    draftStatus("Хранилище черновиков недоступно. Правки в этой вкладке могут пропасть после закрытия.", true);
+  } finally {
+    main.inert = false;
+    setBusy(false);
+  }
+}
+
+window.addEventListener("beforeunload", (event) => {
+  if (!hasUnsavedWork()) return;
+  event.preventDefault();
+  event.returnValue = "";
+});
+
+void startDraft();
 enablePwa({
-  hasDraft: () => Boolean(hasDraftChanges() || state.selected !== DEFAULT_OPTION || $("#client").value || $("#title").value),
-  hasImport: () => Boolean(state.services.length || !$("#reset-batch").hidden),
+  saveDraft: async () => (await (draft?.flush() ?? true)) && !hasUnsavedWork(),
+  hasPendingImport: () => !$("#reset-batch").hidden,
   isBusy: () => state.busy,
 });

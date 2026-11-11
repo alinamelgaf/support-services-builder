@@ -20,12 +20,13 @@ a { color: var(--blue); }
 
 .shell { width: min(1440px, calc(100% - 72px)); margin-inline: auto; }
 .topbar { background: #1b324c; color: white; }
-.topbar-inner { display: flex; align-items: center; gap: 18px; min-height: 60px; }
-.brand { font-weight: 750; font-size: 23px; letter-spacing: -.04em; }
-.app-label { border-left: 1px solid #657b93; padding-left: 18px; font-size: 14px; color: #dce7f1; }
+.topbar-inner { display: flex; align-items: center; gap: 18px; min-height: 60px; padding-block: 8px; }
+.app-icon { display: block; flex: none; width: 64px; height: auto; }
+.brand { font-weight: 750; font-size: 32px; letter-spacing: -.04em; }
+.app-label { border-left: 1px solid #657b93; padding-left: 18px; font-size: 26px; font-weight: 650; line-height: 1.15; color: #dce7f1; }
 .local { margin-left: auto; font-size: 13px; color: #dce7f1; }
 .intro { padding: 30px 0 22px; }
-h1 { margin: 0 0 7px; font-size: clamp(31px, 4vw, 45px); letter-spacing: -.035em; line-height: 1.12; }
+h1 { margin: 0 0 7px; font-size: clamp(23px, 2.4vw, 28px); letter-spacing: -.035em; line-height: 1.12; }
 h2 { margin: 0; font-size: 21px; letter-spacing: -.018em; line-height: 1.25; }
 h3 { margin: 19px 0 4px; font-size: 15px; }
 p { margin: 6px 0 0; line-height: 1.5; }
@@ -161,6 +162,10 @@ dialog .service-id { margin: 0 0 5px; }
 }
 @media (max-width: 620px) {
   .shell { width: calc(100% - 24px); }
+  .topbar-inner { gap: 12px; }
+  .app-icon { width: 44px; }
+  .brand { font-size: 26px; }
+  .app-label { padding-left: 12px; font-size: 18px; }
   .local { display: none; }
   .fields, .variants { grid-template-columns: 1fr; }
   .catalog-panel, .setup, .comparison .panel-heading { padding: 16px; }

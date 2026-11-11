@@ -18,7 +18,7 @@ function page(id, label, storage) {
 const tr = (values, tag = "td") => `<tr>${values.map((value) => `<${tag}>${value}</${tag}>`).join("")}</tr>`;
 const table = (columns, rows) => `<table>${tr(columns, "th")}${rows.map((row) => tr(row)).join("")}</table>`;
 
-export function fixture({ parameter = "12 часов", extra = false, unknown = true, duplicate = false, adversarial = true } = {}) {
+export function fixture({ parameter = "12 часов", extra = false, unknown = true, duplicate = false, adversarial = true, catalogCount = IDS.length } = {}) {
   const link = `<a href="${BASE}/display/DEMO/Example">Справочная карточка</a>`;
   const results = [...IDS].reverse().map((id, index) => page(10 + index, "demo_catalog", card(id, id === "TS-1" ? {
     description: `<p><strong>Демонстрация</strong> ${link} и <a href="${PUBLIC_LINK}">открытая инструкция</a>.</p><ul><li>Учебный пункт</li></ul>` +
@@ -34,6 +34,11 @@ export function fixture({ parameter = "12 часов", extra = false, unknown = 
   if (extra) {
     results.push(page(21, "demo_catalog", card("TS-3.B")), page(22, "demo_catalog", card("TS-4")));
     rows.push([link, "TS-3.B", "+", "-", "6 часов", "-"]);
+  }
+  for (let index = IDS.length; index < catalogCount; index += 1) {
+    const id = `TS-${index + 5}`;
+    results.push(page(100 + index, "demo_catalog", card(id)));
+    rows.push([link, id, "+", "+", "-", "-"]);
   }
   results.push(page(60, "demo_defaults", table(["Карточка услуги", "ID услуги", "В документ", "Standard", "Extended", "Managed Service"], rows)));
   results.push(page(61, "demo_intros", table(["Вариант поддержки", "Вводный текст"], [

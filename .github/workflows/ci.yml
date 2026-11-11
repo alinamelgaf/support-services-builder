@@ -19,11 +19,18 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: pnpm audit --audit-level low
       - run: node scripts/check-public.mjs
+      - run: pnpm check:release
       - run: pnpm test
       - run: pnpm build
       - run: node scripts/check-public.mjs --built
       - run: pnpm exec playwright install --with-deps chromium
-      - run: pnpm test:browser
+      - name: Test PWA installation and upgrade over HTTPS
+        env:
+          SSB_NATIVE_INSTALL: '1'
+        run: |
+          export SSB_TEST_TLS_DIR="$(mktemp -d)"
+          openssl req -x509 -newkey rsa:2048 -nodes -days 1 -subj /CN=localhost -addext subjectAltName=IP:127.0.0.1 -keyout "$SSB_TEST_TLS_DIR/key.pem" -out "$SSB_TEST_TLS_DIR/cert.pem"
+          pnpm test:browser
       - run: pnpm package
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:

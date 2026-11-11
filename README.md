@@ -4,7 +4,7 @@
 
 ## Для менеджера
 
-Распакуйте автономную поставку и откройте `index.html` в Chrome или Edge. Если организация разместила PWA на HTTPS, можно установить её через меню браузера. [Установка и первый запуск](docs/INSTALL.md) · [Получение и импорт JSON](docs/CONFLUENCE_IMPORT.md)
+Откройте HTTPS-адрес PWA и установите приложение через Chrome или Edge. Для резервной работы распакуйте автономную поставку и откройте `index.html`. [Руководство пользователя](docs/USER_GUIDE.md) · [История изменений](CHANGELOG.md)
 
 ## Для разработки
 
@@ -13,6 +13,7 @@
 ```sh
 pnpm install --frozen-lockfile
 pnpm test
+pnpm check:release
 pnpm build
 pnpm exec playwright install chromium
 pnpm test:browser
@@ -28,4 +29,4 @@ pnpm package
 | `standalone/`, `release/` | Автономный `index.html` и ZIP-поставки. |
 | `scripts/`, `.github/workflows/` | Проверка поставки, упаковка и подготовка одобренных релизов. |
 
-[Публикация на GitHub](docs/GITHUB_PUBLICATION.md) · [Обновления](docs/UPDATES.md) · [Отчёт о тестировании](docs/SSB_TEST_REPORT.md) · [Отчёт о безопасности](docs/SSB_SECURITY_REPORT.md)
+[Первая публикация](docs/GITHUB_PUBLICATION.md) · [Выпуск версий](docs/RELEASING.md) · [Обновления](docs/UPDATES.md) · [Откат](docs/ROLLBACK.md) · [Безопасность](docs/SECURITY.md)
