@@ -13,9 +13,18 @@ export const SEVERITY_HEADERS = ["Код", "Наименование", "Крат
 export const SLA_CODES = ["10", "20", "30", "80"];
 export const SEVERITY_CODES = ["10", "11", "12", "20", "21", "22", "30", "31", "32", "80", "90"];
 export const SLA_METRICS = [
-  "Часы работы", "Время реакции", "Время восстановления сервиса",
+  "Время реакции", "Время восстановления сервиса",
   "Время предоставления временного решения", "Время предоставления постоянного решения", "Время ответа",
 ];
+
+export function restoreDocumentSources(sections) {
+  const sla = sections?.sla;
+  if (!sla?.data) return sections ?? {};
+  return { ...sections, sla: { ...sla, data: sla.data.map((row) => (
+    // Older drafts stored working hours before the five time metrics.
+    row.values.length === SLA_METRICS.length + 1 ? { ...row, values: row.values.slice(1) } : row
+  )) } };
+}
 
 export function documentOptions(saved) {
   return {
@@ -46,23 +55,31 @@ export function buildDocumentSections(sources, options, selected, codes, bases) 
   const glossary = data("glossary");
   let sla;
   if (matrix) {
-    const packages = slaMode === "all" ? codes : [selected];
     // The reference can supply labels even when its section is excluded.
     const names = new Map(sources.severity?.data?.map(({ code, name }) => [code, name]));
     const records = new Map(matrix.map(({ code, support, values }) => [code + "|" + support, values]));
-    const table = (columns) => ({
-      headers: ["Уровень критичности", "Показатель", ...columns.map((code) => code === selected && columns.length > 1 ? code + " ✓" : code)],
-      selectedColumn: columns.length > 1 ? 2 + columns.indexOf(selected) : -1,
-      groups: SLA_CODES.map((code) => ({
-        label: names.has(code) ? code + " — " + names.get(code) : code,
-        rows: SLA_METRICS.map((metric, index) => [metric, ...columns.map((support) => records.get(code + "|" + support)[index])]),
-      })),
-    });
-    sla = slaMode === "all" && slaFormat === "separate"
-      ? packages.map((code) => ({
-        ...table([code]), caption: code === selected ? code + " ✓ — Предложение" : code, highlighted: code === selected,
-      }))
-      : [table(packages)];
+    const label = (code) => names.has(code) ? code + " — " + names.get(code) : code;
+    const value = (severityCode, support, index) => records.get(severityCode + "|" + support)[index];
+    if (slaMode === "all" && slaFormat === "comparison") {
+      sla = [{
+        headers: ["Уровень критичности", "Показатель", ...codes.map((code) => code === selected ? code + " ✓" : code)],
+        selectedColumn: 2 + codes.indexOf(selected),
+        groups: SLA_CODES.map((code) => SLA_METRICS.map((metric, index) => [
+          index ? "" : label(code), metric, ...codes.map((support) => value(code, support, index)),
+        ])),
+      }];
+    } else {
+      const packages = slaMode === "all" ? codes : [selected];
+      sla = packages.map((support) => {
+        const highlighted = packages.length > 1 && support === selected;
+        return {
+          caption: highlighted ? support + " ✓ — Предложение" : support,
+          highlighted,
+          headers: ["Показатель", ...SLA_CODES.map(label)],
+          groups: [SLA_METRICS.map((metric, index) => [metric, ...SLA_CODES.map((code) => value(code, support, index))])],
+        };
+      });
+    }
   }
   return {
     ...(intro && { intro: clean(intro[selected]) }),

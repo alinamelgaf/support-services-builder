@@ -214,8 +214,8 @@ const namedColumns = (...labels) => labels.map((label) => [keyText(label)]);
 
 function readSla(page) {
   const headers = namedColumns("Код критичности", "Уровень поддержки", ...SLA_METRICS);
-  headers[5].push("время временного решения");
-  headers[6].push("время постоянного решения");
+  headers[4].push("время временного решения");
+  headers[5].push("время постоянного решения");
   const codes = new Map(OPTIONS.map(({ code }) => [keyText(code), code]));
   const pairs = new Set();
   const rows = readTable(page, headers).map(([codeCell, supportCell, ...metrics]) => {

@@ -148,14 +148,14 @@ function referenceHeader(headers, widths, selected = -1, highlighted = false) {
   });
 }
 
-function slaTable({ headers, selectedColumn, highlighted, groups }) {
-  const widths = headers.length === 3 ? [2320, 4300, 3697] : [1930, 2457, 1976, 1977, 1977];
-  const rows = groups.flatMap(({ label, rows }, group) => {
+function slaTable({ headers, selectedColumn, highlighted, groups, caption }) {
+  const widths = caption ? [2517, 1950, 1950, 1950, 1950] : [1930, 2457, 1976, 1977, 1977];
+  const rows = groups.flatMap((rows, group) => {
     const keepGroup = rows.flat().every((text) => text.length <= 110 && text.split("\n").length <= 2);
     return rows.map((cells, index) => new TableRow({
       cantSplit: cells.every((text) => text.length <= 360 && text.split("\n").length <= 8),
-      children: [index ? "" : label, ...cells].map((text, column) => tableCell(text, widths[column], {
-        background: highlighted || column === selectedColumn ? PALE_TEAL : group % 2 ? PALE_BLUE : WHITE,
+      children: cells.map((text, column) => tableCell(text, widths[column], {
+        background: highlighted || column === selectedColumn ? PALE_TEAL : (caption ? index : group) % 2 ? PALE_BLUE : WHITE,
         bold: column === 0,
         keepNext: keepGroup && index < rows.length - 1,
       })),

@@ -90,27 +90,28 @@ for (const [index, channel] of channels.entries()) {
     await page.locator("#title").fill("Учебное предложение по техническому сопровождению");
     await mode(page, "all").check();
     assert.equal(await slaFormat(page, "comparison").isChecked(), true);
+    const samplePath = (layout, format) => output && !index
+      ? join(output, `SLA-Extended-${layout}.${format === "excel" ? "xlsx" : "docx"}`) : undefined;
     for (const layout of ["comparison", "separate"]) {
       await slaFormat(page, layout).check();
       for (const format of ["excel", "word"]) {
-        const extension = format === "excel" ? "xlsx" : "docx";
-        const sample = output && !index ? join(output, `SLA-Extended-${layout}.${extension}`) : undefined;
-        const file = await exportFile(page, format, sample);
+        const file = await exportFile(page, format, samplePath(layout, format));
         for (const name of names) assert.ok(file.sections.includes(name));
         assert.match(file.text, /Пример Extended/);
         assert.match(file.text, /Учебная организация/);
         assert.match(file.text, /20 минут/);
         assert.match(file.text, /Extended ✓/);
         assert.equal(file.text.includes("Extended ✓ — Предложение"), layout === "separate");
-        assert.doesNotMatch(file.text + file.sections, /wiki\.example\.invalid|BAD_SCRIPT|Матрица RACI/);
+        assert.doesNotMatch(file.text + file.sections, /wiki\.example\.invalid|BAD_SCRIPT|Матрица RACI|Часы работы|24×7/);
       }
     }
     await mode(page, "selected").check();
     assert.equal(await page.locator("#sla-formats").isVisible(), false);
     for (const format of ["excel", "word"]) {
-      const single = await exportFile(page, format);
+      const single = await exportFile(page, format, samplePath("selected", format));
       assert.match(single.text, /20 минут/);
-      assert.doesNotMatch(single.text, /Extended ✓|35 минут|45 минут/);
+      assert.match(single.text, /10 — Критический/);
+      assert.doesNotMatch(single.text, /Extended ✓|35 минут|45 минут|Часы работы|24×7/);
     }
     await mode(page, "all").check();
     assert.equal(await slaFormat(page, "separate").isChecked(), true);
@@ -124,6 +125,24 @@ for (const [index, channel] of channels.entries()) {
       await include(page, key).check();
     }
     await page.getByText("Черновик сохранён на этом устройстве.").waitFor();
+    await page.evaluate(() => new Promise((resolve, reject) => {
+      const open = indexedDB.open("ssb-dev:support-services-builder-drafts");
+      open.onerror = () => reject(open.error);
+      open.onsuccess = () => {
+        const db = open.result;
+        const tx = db.transaction("proposals", "readwrite");
+        const store = tx.objectStore("proposals");
+        const scope = new URL(".", location.href).pathname;
+        const read = store.get(scope);
+        read.onsuccess = () => {
+          const record = read.result;
+          for (const row of record.proposal.sections.sla.data) row.values.unshift("Старые часы из черновика");
+          store.put(record, scope);
+        };
+        tx.oncomplete = () => { db.close(); resolve(); };
+        tx.onabort = () => { db.close(); reject(tx.error); };
+      };
+    }));
     await page.reload();
     await page.getByText("Черновик восстановлен на этом устройстве.").waitFor();
     for (const key of keys) assert.equal(await include(page, key).isChecked(), true);
@@ -131,6 +150,12 @@ for (const [index, channel] of channels.entries()) {
     assert.equal(await slaFormat(page, "separate").isChecked(), true);
     assert.equal(await variant(page, "Extended").isChecked(), true);
     assert.equal(await page.locator("#client").inputValue(), "Учебная организация");
+    for (const format of ["excel", "word"]) {
+      const restored = await exportFile(page, format);
+      assert.match(restored.text, /20 минут/);
+      assert.match(restored.text, /50 минут/);
+      assert.doesNotMatch(restored.text, /Старые часы из черновика/);
+    }
 
     await upload(page, referenceFixture({ alterSla: () => null }));
     assert.equal(await include(page, "sla").isDisabled(), true);

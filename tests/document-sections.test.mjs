@@ -3,7 +3,7 @@ import { test } from "node:test";
 import ExcelJS from "exceljs";
 import JSZip from "jszip";
 import { createImportBatch, queryUrl, validateSources } from "../src/confluence.js";
-import { documentOptions, SEVERITY_CODES, SLA_CODES, SLA_METRICS } from "../src/document-sections.js";
+import { documentOptions, restoreDocumentSources, SEVERITY_CODES, SLA_CODES, SLA_METRICS } from "../src/document-sections.js";
 import { generateExcel } from "../src/excel.js";
 import { buildProposal, OPTIONS } from "../src/proposal.js";
 import { plainText } from "../src/rich-text.js";
@@ -15,6 +15,7 @@ const read = (data = referenceFixture()) => createImportBatch().add([data], sour
 const packages = OPTIONS.map(({ code }) => code);
 const sectionNames = ["Матрица SLA", "Уровни критичности", "Допущения и ограничения", "Глоссарий"];
 const included = { sla: true, severity: true, assumptions: true, glossary: true, raci: true };
+const severityHeaders = ["10 — Критический", "20 — Значительный", "30 — Незначительный", "80 — Вопрос"];
 
 function proposal(result, selected, document) {
   return buildProposal(result.services, {
@@ -23,7 +24,7 @@ function proposal(result, selected, document) {
   });
 }
 
-test("recognizes the two SLA tables independently within a complete paginated REST import", () => {
+test("recognizes the two SLA tables without working hours in a complete paginated REST import", () => {
   const data = referenceFixture();
   const batch = createImportBatch();
   assert.equal(batch.add([paginate(data, 0, 9)], sources).complete, false);
@@ -31,8 +32,9 @@ test("recognizes the two SLA tables independently within a complete paginated RE
   assert.deepEqual(issues, []);
   assert.deepEqual(sections.sla.data.map(({ code, support }) => [code, support]), SLA_CODES.flatMap((code) => packages.map((support) => [code, support])));
   assert.deepEqual(sections.severity.data.map(({ code }) => code), SEVERITY_CODES);
+  assert.ok(sections.sla.data.every(({ values }) => values.length === 5));
   assert.deepEqual(sections.sla.data[0].values, [
-    "Рабочие дни, 09:00–18:00", "45 минут", "Не применимо", "16 часов", "5 рабочих дней", "Не регламентируется",
+    "45 минут", "Не применимо", "16 часов", "5 рабочих дней", "Не регламентируется",
   ]);
   assert.equal(sections.severity.data[0].description[1].kind, "list");
   assert.equal(plainText(sections.severity.data[1].short), "");
@@ -43,6 +45,16 @@ test("recognizes the two SLA tables independently within a complete paginated RE
   const cql = url.searchParams.get("cql");
   for (const key of ["sla", "assumptions", "glossary"]) assert.ok(cql.includes(sources.labels[key]));
   assert.ok(!cql.includes(sources.labels.raci));
+});
+
+test("restores SLA from old drafts without shifting or retaining obsolete working hours", () => {
+  const { sections } = read();
+  const old = { ...sections, sla: {
+    data: sections.sla.data.map(({ code, support, values }) => ({ code, support, values: ["Старые часы", ...values] })),
+  } };
+  assert.deepEqual(restoreDocumentSources(old), sections);
+  assert.deepEqual(restoreDocumentSources(sections), sections);
+  assert.deepEqual(restoreDocumentSources({ sla: { error: "Нет данных" } }), { sla: { error: "Нет данных" } });
 });
 
 test("rejects invalid additional tables without disabling independent valid sections", () => {
@@ -70,7 +82,7 @@ test("rejects invalid additional tables without disabling independent valid sect
     const result = read(referenceFixture({ alterSeverity }));
     assert.match(result.sections.severity.error, error);
     assert.equal(result.sections.sla.data.length, 12);
-    assert.equal(proposal(result, "Extended", { included }).sections.sla[0].groups[0].label, "10");
+    assert.deepEqual(proposal(result, "Extended", { included }).sections.sla[0].headers, ["Показатель", ...SLA_CODES]);
   }
   const broken = referenceFixture();
   broken.results.at(-1).body.storage.value = broken.results.at(-1).body.storage.value.replace("Определение RU", "Ошибка");
@@ -94,18 +106,20 @@ test("builds all SLA views and automatically selects the introduction for each p
     const [only] = single.sla;
     const [comparison] = all.sla;
     assert.equal(single.sla.length, 1);
-    assert.equal(only.headers.at(-1), selected);
+    assert.equal(only.caption, selected);
+    assert.deepEqual(only.headers, ["Показатель", ...severityHeaders]);
     assert.equal(comparison.headers[2 + index], selected + " ✓");
     assert.equal(comparison.selectedColumn, 2 + index);
-    assert.deepEqual(split.map(({ headers }) => headers.at(-1)), packages);
+    assert.deepEqual(split.map(({ caption }) => caption.replace(" ✓ — Предложение", "")), packages);
+    assert.ok(split.every(({ headers }) => headers.join("|") === only.headers.join("|")));
     assert.equal(split.filter(({ highlighted }) => highlighted).length, 1);
     assert.equal(split[index].highlighted, true);
     assert.match(plainText(single.intro), new RegExp("Пример " + selected));
-    assert.equal(only.groups.length, 4);
-    assert.deepEqual(only.groups[0].rows.map(([label]) => label), SLA_METRICS);
+    assert.equal(only.groups.length, 1);
+    assert.deepEqual(only.groups[0].map(([label]) => label), SLA_METRICS);
     assert.deepEqual(only.groups, split[index].groups);
-    for (const [i, group] of only.groups.entries()) {
-      assert.deepEqual(group.rows.map((row) => row[1]), comparison.groups[i].rows.map((row) => row[1 + index]));
+    for (const [i, group] of comparison.groups.entries()) {
+      assert.deepEqual(group.map((row) => row[2 + index]), only.groups[0].map((row) => row[1 + i]));
     }
   }
 });
@@ -120,22 +134,34 @@ test("exports optional Word sections and Excel sheets in order with selected SLA
     await workbook.xlsx.load(excel);
     assert.deepEqual(workbook.worksheets.map(({ name }) => name), ["Описание услуг", "Предложение", ...sectionNames]);
     const sheet = workbook.getWorksheet("Матрица SLA");
-    assert.equal(sheet.rowCount, 26);
-    assert.equal(sheet.columnCount, slaMode === "all" ? 5 : 3);
-    assert.match(await xlsx.file("xl/workbook.xml").async("string"), /&apos;Матрица SLA&apos;!\$A\$1:\$[CE]\$26/);
-    assert.match(await xlsx.file("xl/worksheets/sheet3.xml").async("string"), /<brk id="14"/);
-    assert.equal(sheet.getCell("A21").value, "80 — Вопрос");
-    assert.equal(sheet.getCell(slaMode === "all" ? "D4" : "C4").value, "20 минут");
+    const headerRow = slaMode === "all" ? 2 : 3;
+    assert.equal(sheet.rowCount, slaMode === "all" ? 22 : 8);
+    assert.equal(sheet.columnCount, 5);
+    assert.ok((await xlsx.file("xl/workbook.xml").async("string")).includes(`&apos;Матрица SLA&apos;!$A$1:$E$${sheet.rowCount}`));
+    assert.deepEqual(sheet.getRow(headerRow).values.slice(1), data.sections.sla[0].headers);
     if (slaMode === "all") {
+      assert.equal(sheet.getCell("A18").value, "80 — Вопрос");
       assert.equal(sheet.getCell("D2").value, "Extended ✓");
-      assert.equal(sheet.getCell("D26").fill.fgColor.argb, "FFE5F3EE");
-      assert.equal(sheet.getCell("C5").value, "Не применимо");
-      assert.equal(sheet.getCell("C8").value, "Не регламентируется");
+      assert.equal(sheet.getCell("D3").value, "20 минут");
+      assert.equal(sheet.getCell("D22").fill.fgColor.argb, "FFE5F3EE");
+      assert.equal(sheet.getCell("C4").value, "Не применимо");
+      assert.equal(sheet.getCell("C7").value, "Не регламентируется");
+      const breaks = [...(await xlsx.file("xl/worksheets/sheet3.xml").async("string")).matchAll(/<brk id="(\d+)"/g)];
+      assert.ok(breaks.length && breaks.every(([, row]) => (Number(row) - 2) % 5 === 0));
+    } else {
+      assert.equal(sheet.getCell("A2").value, "Extended");
+      assert.equal(sheet.getCell("B4").value, "20 минут");
     }
+    for (const name of ["Матрица SLA", "Уровни критичности", "Глоссарий"]) {
+      assert.equal(workbook.getWorksheet(name).views[0].xSplit ?? 0, 0);
+      assert.ok(workbook.getWorksheet(name).views[0].ySplit > 0);
+    }
+    for (const name of ["Описание услуг", "Допущения и ограничения"]) assert.equal(workbook.getWorksheet(name).views[0].xSplit, 2);
+    assert.equal(workbook.getWorksheet("Предложение").views[0].xSplit ?? 0, 0);
     assert.equal(workbook.getWorksheet("Уровни критичности").getCell("A13").value, "90");
     assert.match(workbook.getWorksheet("Уровни критичности").getCell("D3").text, /• Пользователи/);
     assert.equal(workbook.getWorksheet("Глоссарий").getCell("B4").text, "");
-    assert.doesNotMatch(await xlsx.file("xl/sharedStrings.xml").async("string"), /wiki\.example\.invalid|javascript:|BAD_SCRIPT/);
+    assert.doesNotMatch(await xlsx.file("xl/sharedStrings.xml").async("string"), /wiki\.example\.invalid|javascript:|BAD_SCRIPT|Часы работы|24×7/);
     const xml = await docx.file("word/document.xml").async("string");
     const relations = await docx.file("word/_rels/document.xml.rels").async("string");
     let previous = xml.indexOf("Описания услуг");
@@ -148,15 +174,18 @@ test("exports optional Word sections and Excel sheets in order with selected SLA
     const sla = xml.slice(xml.indexOf("Матрица SLA"), xml.indexOf("Уровни критичности"));
     assert.match(sla, /<w:tblHeader\/>/);
     assert.match(sla, /80 — Вопрос/);
-    assert.doesNotMatch(sla, /11 —|90 —|<w:tblGridChange/);
+    assert.doesNotMatch(sla, /11 —|90 —|Часы работы|24×7|<w:tblGridChange/);
     if (slaMode === "all") assert.match(sla, /Extended ✓.*?w:fill="E5F3EE"/);
-    else assert.doesNotMatch(sla, /Standard|Managed Service/);
+    else {
+      assert.doesNotMatch(sla, /Standard|Managed Service/);
+      assert.ok(sla.indexOf("Extended") < sla.indexOf("<w:tbl>"));
+    }
     const slaRows = [...sla.matchAll(/<w:tr>.*?<\/w:tr>/gs)].map(([row]) => row).slice(1);
-    const expectedRows = data.sections.sla[0].groups.flatMap(({ rows }) => rows);
+    const expectedRows = data.sections.sla[0].groups.flat();
     assert.equal(slaRows.length, expectedRows.length);
     for (const [index, values] of expectedRows.entries()) {
       for (const [col, value] of values.entries()) {
-        assert.equal(sheet.getCell(index + 3, col + 2).text, value);
+        assert.equal(sheet.getCell(headerRow + index + 1, col + 1).text, value);
         assert.ok(slaRows[index].includes(value));
       }
     }
@@ -191,20 +220,26 @@ test("exports three sequential SLA tables with every original value and highligh
     if (model.sections.sla.some(({ caption }) => caption === row.getCell(1).value)) captions.push(row.number);
   });
   assert.equal(captions.length, 3);
-  assert.equal(sheet.columnCount, 3);
+  assert.equal(sheet.columnCount, 5);
+  assert.equal(sheet.views[0].xSplit ?? 0, 0);
+  assert.doesNotMatch(sla, /Часы работы|24×7/);
   for (const [index, code] of packages.entries()) {
     const caption = captions[index];
-    assert.equal(sheet.getCell(caption + 1, 3).text, code);
-    assert.match(tables[index], new RegExp(`<w:t[^>]*>${code}</w:t>`));
+    assert.deepEqual(sheet.getRow(caption + 1).values.slice(1), ["Показатель", ...severityHeaders]);
+    assert.ok(sla.includes(model.sections.sla[index].caption));
+    for (const header of severityHeaders) assert.ok(tables[index].includes(header));
     assert.equal(tables[index].includes('w:fill="E5F3EE"'), code === "Extended");
     assert.equal(sheet.getCell(caption + 2, 1).fill.fgColor.argb === "FFE5F3EE", code === "Extended");
     assert.equal(sheet.getCell(caption + 2, 3).fill.fgColor.argb === "FFE5F3EE", code === "Extended");
-    const expected = result.sections.sla.data.filter(({ support }) => support === code).flatMap(({ values }) => values);
+    const expected = result.sections.sla.data.filter(({ support }) => support === code).map(({ values }) => values);
     const rows = [...tables[index].matchAll(/<w:tr>.*?<\/w:tr>/gs)].map(([row]) => row).slice(1);
-    assert.equal(rows.length, expected.length);
-    for (const [i, value] of expected.entries()) {
-      assert.equal(sheet.getCell(caption + 2 + i, 3).text, value);
-      assert.ok(rows[i].includes(value));
+    assert.equal(rows.length, 5);
+    if (index) assert.equal(caption - captions[index - 1], 8);
+    for (const [i, values] of expected.entries()) {
+      for (const [metric, value] of values.entries()) {
+        assert.equal(sheet.getCell(caption + 2 + metric, i + 2).text, value);
+        assert.ok(rows[metric].includes(value));
+      }
     }
   }
 });

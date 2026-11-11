@@ -4,7 +4,7 @@ import { buildProposal, buildServiceRows, DEFAULT_OPTION, defaultSelection, isIn
 import {
   DEFAULTS_FILENAME, defaultDifferences, initialDefaults, overlayDefaults, parseDefaults, readDefaults, serializeDefaults, snapshotDefaults, writeDefaults,
 } from "./package-defaults.js";
-import { documentOptions, sectionReason, SECTION_LABELS } from "./document-sections.js";
+import { documentOptions, restoreDocumentSources, sectionReason, SECTION_LABELS } from "./document-sections.js";
 import { renderRich } from "./rich-dom.js";
 import { generateExcel } from "./excel.js";
 import { generateWord } from "./word.js";
@@ -572,7 +572,7 @@ function restoreProposal(saved) {
   Object.assign(state, {
     selected, services, overrides, documentOverrides, defaults: packageSettings(defaults), standard: packageSettings(standard),
     hasStandard, layer, base, catalog, conflict, documentOptions: documentOptions(saved.documentOptions),
-    sections: saved.sections ?? (previousIntro ? { intro: { data: previousIntro } } : {}),
+    sections: restoreDocumentSources(saved.sections ?? (previousIntro ? { intro: { data: previousIntro } } : {})),
   });
   $("#client").value = saved.client;
   $("#title").value = saved.title;
