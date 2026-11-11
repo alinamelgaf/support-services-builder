@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { mkdir, readFile, readdir, realpath, writeFile } from "node:fs/promises";
+import { copyFile, mkdir, readFile, readdir, realpath, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { createRequire } from "node:module";
 import { fileURLToPath } from "node:url";
@@ -92,6 +92,7 @@ const digest = createHash("sha256").update(sw).update(JSON.stringify(hashes)).di
 const worker = sw.replace("@@VERSION@@", `${version}-${digest}`).replace("@@ASSETS@@", JSON.stringify(hashes));
 await Promise.all([
   ...Object.entries(assets).map(([name, content]) => writeFile(join(root, "dist", name), content)),
+  ...["dist", "standalone"].map((folder) => copyFile(join(root, "LICENSE"), join(root, folder, "LICENSE"))),
   write("dist/sw.js", worker),
   write("dist/.nojekyll", ""),
   write("standalone/user-guide.html", guide),

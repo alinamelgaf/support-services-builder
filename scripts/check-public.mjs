@@ -38,7 +38,11 @@ async function scan(path) {
   const raw = await readFile(path);
   if (binaryNames.test(path) && !raw.subarray(0, 8).equals(Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]))) throw new Error(`Invalid PNG: ${path}`);
   const text = raw.toString("utf8");
-  const normalized = text.normalize("NFKC").toLowerCase();
+  // The first MIT copyright line is public attribution. Scan the rest of the file as usual.
+  const privateText = /^(?:(?:dist|standalone)\/)?LICENSE$/.test(path)
+    ? text.replace(/^(MIT License\r?\n\r?\n)Copyright \(c\) \d{4} [^\r\n]+(?=\r?\n)/, "$1")
+    : text;
+  const normalized = privateText.normalize("NFKC").toLowerCase();
   for (const phrase of deny) if (normalized.includes(phrase)) throw new Error(`Private denylist match in ${path}`);
   for (const [reason, pattern] of suspicious) if (pattern.test(text)) throw new Error(`${reason} match in ${path}`);
   if (/^(?:src|config|pwa|tests|examples)\//.test(path)) {

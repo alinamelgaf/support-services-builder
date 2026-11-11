@@ -30,3 +30,7 @@ pnpm package
 | `scripts/`, `.github/workflows/` | Проверка поставки, упаковка и подготовка одобренных релизов. |
 
 [Первая публикация](docs/GITHUB_PUBLICATION.md) · [Выпуск версий](docs/RELEASING.md) · [Обновления](docs/UPDATES.md) · [Откат](docs/ROLLBACK.md) · [Безопасность](docs/SECURITY.md)
+
+## Лицензия
+
+Исходный код распространяется по [лицензии MIT](LICENSE). Уведомления о лицензиях сторонних библиотек включены в обе сборки отдельным файлом `THIRD_PARTY_NOTICES.txt`.
