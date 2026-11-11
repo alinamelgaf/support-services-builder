@@ -134,23 +134,14 @@ dialog .service-id { margin: 0 0 5px; }
 .service-copy :is(ul, ol) { margin: 5px 0; padding-left: 26px; }
 .service-copy li > p { margin-top: 2px; }
 
-.introduction { margin-top: 18px; }
-.intro-variant { color: var(--muted); font-weight: 400; margin-left: 6px; }
-.editor-tools { margin-bottom: 7px; }
-.tool { min-height: 32px; padding: 4px 9px; font-size: 13px; }
-.tool.italic { font-style: italic; }
-.tool.underline { text-decoration: underline; }
-.intro-editor {
-  display: block; min-height: 100px; padding: 8px 10px;
-  font: inherit; color: var(--ink); background: white; border: 1px solid #c9d5e2; border-radius: 6px;
-  white-space: pre-wrap; overflow-wrap: anywhere;
-}
-.intro-editor p { margin: 0; }
-.intro-editor :is(ol, ul) { margin: 0; padding-left: 26px; }
-.editor-feedback:empty { display: none; }
-.editor-feedback { color: #862f2a; font-size: 13px; }
-.intro-options { display: flex; flex-wrap: wrap; gap: 8px 18px; margin-top: 9px; }
-.intro-options label { display: flex; align-items: center; gap: 7px; font-size: 14px; cursor: pointer; }
+.document-options { margin-top: 18px; }
+.document-sections { display: grid; gap: 7px; }
+.document-sections label { display: inline-flex; align-items: baseline; gap: 7px; font-size: 14px; }
+.document-sections label:has(input:enabled) { cursor: pointer; }
+.document-sections label:has(input:disabled), .document-sections small { color: var(--muted); }
+.document-sections small { display: block; margin-left: 25px; overflow-wrap: anywhere; }
+.document-sections small:empty { display: none; }
+.sla-modes { display: grid; gap: 5px; margin: 6px 0 4px 25px; }
 .defaults-tools { margin: 0 23px 15px; padding: 10px 12px; border: 1px solid var(--line); border-radius: 7px; }
 .defaults-tools h3 { margin: 0 0 7px; font-size: 14px; }
 .comparison .defaults-tools .notice { margin: 8px 0 0; }

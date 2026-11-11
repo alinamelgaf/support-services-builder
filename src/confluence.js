@@ -1,16 +1,17 @@
 import { parseDocument } from "htmlparser2";
 import { ancestor, descendants, loadCatalog, XML_INVALID } from "./catalog.js";
-import { emptyIntroduction, validateIntroduction } from "./introductions.js";
+import { SECTION_LABELS, SEVERITY_CODES, SLA_CODES, SLA_METRICS } from "./document-sections.js";
 import { initialDefaults } from "./package-defaults.js";
 import { OPTIONS } from "./proposal.js";
-import { plainText, readRich } from "./rich-text.js";
+import { hasRichText, plainText, readRich } from "./rich-text.js";
 
 export const SOURCE_TYPES = [
-  ["catalog", "Каталог услуг"], ["defaults", "Базовая конфигурация"], ["intros", "Вводные тексты"],
-  ["sla", "SLA"], ["raci", "RACI"], ["assumptions", "Assumptions"], ["glossary", "Глоссарий"],
+  ["catalog", "Каталог услуг"], ["defaults", "Базовая конфигурация"], ["intros", "Вводные тексты предложений"],
+  ["sla", "SLA и уровни критичности"], ["raci", "Матрица RACI"],
+  ["assumptions", "Допущения и ограничения"], ["glossary", "Глоссарий"],
 ];
 export const SOURCE_KEY = (typeof __SSB_STORAGE_PREFIX__ === "string" ? __SSB_STORAGE_PREFIX__ : "") + "ssb:confluence-sources:v1";
-const SUPPORTED = new Set(SOURCE_TYPES.slice(0, 3).map(([key]) => key));
+const SUPPORTED = new Set(SOURCE_TYPES.map(([key]) => key).filter((key) => key !== "raci"));
 const record = (item) => Boolean(item && typeof item === "object" && !Array.isArray(item));
 const natural = (value) => Number.isSafeInteger(value) && value >= 0;
 
@@ -36,8 +37,8 @@ export function validateSources(data = {}) {
 }
 
 export function queryUrl({ base, space, labels }) {
-  const active = [...SUPPORTED].map((key) => labels[key]);
-  if (!base || active.some((label) => !label)) return "";
+  if (!base || !labels.catalog) return "";
+  const active = [...SUPPORTED].map((key) => labels[key]).filter(Boolean);
   const terms = ["type = page", `label IN (${active.map((label) => `"${label}"`).join(", ")})`];
   if (space) terms.push(`space = "${space}"`);
   const search = new URL(base + "/rest/api/content/search");
@@ -113,7 +114,7 @@ export function createImportBatch() {
         if (payloads.length !== 1 || pages.size) throw new Error("Старый JSON каталога импортируйте отдельно от страниц REST.");
         const base = readBase(legacy.source) || sources.base;
         const catalog = loadCatalog(legacy, base);
-        return { complete: true, count: catalog.pages, data: { ...catalog, base, standard: initialDefaults(), legacy: true, usableStandard: false } };
+        return { complete: true, count: catalog.pages, data: { ...catalog, base, standard: initialDefaults(), sections: {}, legacy: true, usableStandard: false } };
       }
       const candidate = new Map(pages);
       for (const payload of payloads) {
@@ -133,7 +134,11 @@ export function createImportBatch() {
   };
 }
 
-const cellRich = (cell, base) => readRich(cell.children, { base, source: base || undefined });
+function cellRich(cell, base) {
+  const blocks = readRich(cell.children, { base, source: base || undefined });
+  if (XML_INVALID.test(plainText(blocks))) throw new Error("Ячейка таблицы содержит недопустимые символы.");
+  return blocks;
+}
 const cellText = (cell) => plainText(cellRich(cell)).trim();
 const keyText = (text) => text.replace(/\s+/g, " ").replace(/:$/, "").trim().toLowerCase();
 const headerText = (cell) => keyText(cellText(cell));
@@ -152,7 +157,9 @@ function readTable(page, header, optional = false) {
     matches.push(rows.slice(index + 1).filter((row) => row.some(cellText)).map((row) => positions.map((position) => row[position])));
   }
   if (!matches.length && optional) return null;
-  if (matches.length !== 1) throw new Error("Требуется одна таблица с ожидаемыми заголовками.");
+  if (matches.length !== 1) throw new Error(matches.length
+    ? "Найдено несколько таблиц с одинаковыми ожидаемыми заголовками."
+    : "Таблица отсутствует или содержит неверные заголовки.");
   if (matches[0].some((row) => row.some((cell) => !cell))) throw new Error("В таблице есть строки с пропущенными ячейками.");
   return matches[0];
 }
@@ -183,16 +190,15 @@ function readStandard(page, ids, standard, warn) {
   standard.includedInDocument = Object.fromEntries(included);
 }
 
-function readIntros(page, standard, base) {
+function readIntros(page, base) {
   const codes = OPTIONS.map(({ code }) => code);
   const names = new Map(codes.map((code) => [keyText(code), code]));
-  const introduction = (cell) => validateIntroduction({ ...emptyIntroduction(), blocks: cellRich(cell, base) });
+  const introduction = (cell) => cellRich(cell, base);
   const rows = readTable(page, [["вариант", "вариант поддержки", "вариант предложения", "пакет", "тип поддержки", "уровень поддержки"], ["вводный текст", "текст", "текст предложения"]], true);
   if (!rows) {
     const columns = readTable(page, codes.map((code) => [keyText(code)]));
     if (columns.length !== 1) throw new Error("Под заголовками трёх вариантов нужна одна строка вводных текстов.");
-    standard.introductions = Object.fromEntries(codes.map((code, index) => [code, introduction(columns[0][index])]));
-    return;
+    return Object.fromEntries(codes.map((code, index) => [code, introduction(columns[0][index])]));
   }
   const values = new Map();
   for (const [variant, text] of rows) {
@@ -201,7 +207,75 @@ function readIntros(page, standard, base) {
     values.set(code, introduction(text));
   }
   if (values.size !== codes.length) throw new Error("В таблице нужны все три варианта поддержки.");
-  standard.introductions = Object.fromEntries(values);
+  return Object.fromEntries(values);
+}
+
+const namedColumns = (...labels) => labels.map((label) => [keyText(label)]);
+
+function readSla(page) {
+  const headers = namedColumns("Код критичности", "Уровень поддержки", ...SLA_METRICS);
+  headers[5].push("время временного решения");
+  headers[6].push("время постоянного решения");
+  const codes = new Map(OPTIONS.map(({ code }) => [keyText(code), code]));
+  const pairs = new Set();
+  const rows = readTable(page, headers).map(([codeCell, supportCell, ...metrics]) => {
+    const code = cellText(codeCell);
+    const support = codes.get(headerText(supportCell));
+    if (!SLA_CODES.includes(code)) throw new Error(`Код критичности «${code}» недопустим для базовой матрицы SLA.`);
+    if (!support) throw new Error(`Неизвестный уровень поддержки «${cellText(supportCell)}».`);
+    const key = code + "|" + support;
+    if (pairs.has(key)) throw new Error(`Повтор сочетания ${code} и ${support}.`);
+    pairs.add(key);
+    const blocks = metrics.map((cell) => cellRich(cell));
+    const missing = blocks.findIndex((value) => !hasRichText(value));
+    if (missing >= 0) throw new Error(`Показатель «${SLA_METRICS[missing]}» пуст для ${code} и ${support}.`);
+    return { code, support, values: blocks.map(plainText) };
+  });
+  for (const code of SLA_CODES) for (const support of codes.values()) {
+    if (!pairs.has(code + "|" + support)) throw new Error(`Отсутствует сочетание ${code} и ${support}.`);
+  }
+  return rows;
+}
+
+function readSeverity(page, base) {
+  const seen = new Set();
+  const rows = readTable(page, namedColumns("Код", "Наименование", "Краткое описание", "Полное описание"))
+    .map(([codeCell, nameCell, shortCell, fullCell]) => {
+      const code = cellText(codeCell);
+      if (!SEVERITY_CODES.includes(code)) throw new Error(`Неизвестный код критичности «${code}».`);
+      if (seen.has(code)) throw new Error(`Повтор кода критичности ${code}.`);
+      seen.add(code);
+      const name = cellText(nameCell);
+      const description = cellRich(fullCell, base);
+      if (!name || !hasRichText(description)) throw new Error(`Для кода ${code} требуется наименование и полное описание.`);
+      return { code, name, short: cellRich(shortCell, base), description };
+    });
+  const missing = SEVERITY_CODES.filter((code) => !seen.has(code));
+  if (missing.length) throw new Error(`В справочнике отсутствуют коды ${missing.join(", ")}.`);
+  return rows;
+}
+
+function readAssumptions(page, base) {
+  const rows = readTable(page, namedColumns("Раздел", "Формулировка")).map(([section, text]) => {
+    const category = ["Допущения", "Ограничения"].find((name) => keyText(name) === headerText(section));
+    const wording = cellRich(text, base);
+    if (!category) throw new Error(`Неизвестный подраздел «${cellText(section)}».`);
+    if (!hasRichText(wording)) throw new Error(`Пустая формулировка в подразделе «${category}».`);
+    return { category, wording };
+  });
+  if (!rows.length) throw new Error("Таблица не содержит формулировок.");
+  return rows;
+}
+
+function readGlossary(page, base) {
+  const rows = readTable(page, namedColumns("Термин RU", "Term ENG", "Определение RU")).map(([ru, eng, text]) => {
+    const term = cellText(ru);
+    const definition = cellRich(text, base);
+    if (!term || !hasRichText(definition)) throw new Error("Нужны русский термин и его определение.");
+    return { term, english: cellText(eng), definition };
+  });
+  if (!rows.length) throw new Error("Таблица не содержит терминов.");
+  return rows;
 }
 
 function normalizeRest(results, sources) {
@@ -233,23 +307,37 @@ function normalizeRest(results, sources) {
     }
     byId.set(id, data);
     if (sourcesByType.has(type)) sourcesByType.get(type).push(data);
-    else issues.push({ level: "warning", page_id: id, title, message: "Страница не относится к обрабатываемым источникам." });
+    else if (type !== "raci") issues.push({ level: "warning", page_id: id, title, message: "Страница не относится к обрабатываемым источникам." });
   }
   const catalog = loadCatalog({ schemaVersion: 1, pages: sourcesByType.get("catalog") }, sources.base);
   const standard = initialDefaults();
   const ids = new Map(catalog.services.map(({ id }) => [id.toLowerCase(), id]));
-  let usableStandard = true;
-  for (const [key, read] of [["defaults", (page, warn) => readStandard(page, ids, standard, warn)], ["intros", (page) => readIntros(page, standard, sources.base)]]) {
+  function readSource(key, read, section) {
     const pages = sourcesByType.get(key);
     const name = SOURCE_TYPES.find(([type]) => type === key)[1];
-    const issue = (level, message) => issues.push({ level, page_id: pages[0]?.pageId, title: pages[0]?.title, message: `${name}. ${message}` });
+    const issue = (level, message) => issues.push({
+      level, page_id: pages[0]?.pageId, title: pages[0]?.title, message: [name, section, message].filter(Boolean).join(". "),
+    });
     if (pages.length !== 1) {
-      issue("warning", pages.length ? "Найдено больше одной страницы источника." : "Страница источника отсутствует.");
-      usableStandard = false;
-      continue;
+      const error = pages.length ? "Найдено больше одной страницы источника."
+        : sources.labels[key] ? "Страница источника отсутствует в JSON." : "Метка источника не настроена.";
+      if (sources.labels[key] || key === "defaults") issue("warning", error);
+      return { error };
     }
-    try { read(pages[0], (message) => issue("warning", message)); }
-    catch (error) { issue("error", error.message); usableStandard = false; }
+    try {
+      return { data: read(pages[0], (message) => issue("warning", message)) };
+    } catch (failure) {
+      issue("error", failure.message);
+      return { error: failure.message };
+    }
   }
-  return { ...catalog, issues: [...catalog.issues, ...issues], base: sources.base, standard, usableStandard, legacy: false };
+  const defaults = readSource("defaults", (page, warn) => readStandard(page, ids, standard, warn));
+  const sections = {
+    intro: readSource("intros", (page) => readIntros(page, sources.base)),
+    sla: readSource("sla", readSla, SECTION_LABELS.sla),
+    severity: readSource("sla", (page) => readSeverity(page, sources.base), SECTION_LABELS.severity),
+    assumptions: readSource("assumptions", (page) => readAssumptions(page, sources.base)),
+    glossary: readSource("glossary", (page) => readGlossary(page, sources.base)),
+  };
+  return { ...catalog, issues: [...catalog.issues, ...issues], base: sources.base, standard, sections, usableStandard: !defaults.error, legacy: false };
 }

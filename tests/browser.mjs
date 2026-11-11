@@ -120,10 +120,8 @@ async function checkStandalone(browser) {
     await page.locator("#detail-description ul").waitFor();
     await page.locator("#close-dialog").click();
     await selected(page, "Extended");
-    assert.equal(await page.locator("#intro-text em, #intro-text i").first().textContent(), "Пример Extended");
-    assert.equal(await page.locator("#intro-word").isChecked(), true);
-    assert.equal(await page.locator("#intro-excel").isChecked(), false);
-    await page.locator("#intro-excel").check();
+    assert.equal(await page.locator("#intro-text, #intro-word, #intro-excel, [contenteditable]").count(), 0);
+    assert.equal(await page.locator("#include-intro").isChecked(), true);
     await standardParam(page).fill("7 часов локально");
     await page.getByRole("checkbox", { name: "Включить в документ TS-1.A", exact: true }).uncheck();
     await dialog(page, "#save-defaults", /сохранённые настройки будут заменены/i);
@@ -139,7 +137,7 @@ async function checkStandalone(browser) {
     assert.equal(await standardParam(page).inputValue(), "18 часов");
     await dialog(page, "#reset", /Восстановить локальные настройки/);
     assert.equal(await standardParam(page).inputValue(), "7 часов локально");
-    assert.equal(await page.locator("#intro-excel").isChecked(), true);
+    assert.equal(await page.locator("#include-intro").isChecked(), true);
     const excel = await exportFile(page, "excel", "xl/sharedStrings.xml");
     const word = await exportFile(page, "word", "word/document.xml");
     assert.match(excel, /Пример Extended/);
@@ -231,7 +229,7 @@ async function checkHosted(channel) {
     await stale.getByText("Черновик восстановлен на этом устройстве.").waitFor();
     await standardParam(page).fill("Черновик перед обновлением");
     await selected(page, "Extended");
-    await page.locator("#intro-text").fill("Учебный вводный текст перед обновлением");
+    await page.locator("#include-intro").uncheck();
     await page.locator("#client").fill("Учебный клиент");
     await page.getByRole("checkbox", { name: "Включить в документ TS-1.A", exact: true }).uncheck();
     await page.getByText("Черновик сохранён на этом устройстве.").waitFor();
@@ -258,7 +256,7 @@ async function checkHosted(channel) {
     await page.getByText("Черновик восстановлен на этом устройстве.").waitFor();
     assert.equal(await standardParam(page).inputValue(), "Черновик перед обновлением");
     assert.equal(await page.getByRole("radio", { name: /^Extended/ }).isChecked(), true);
-    assert.equal(await page.locator("#intro-text").textContent(), "Учебный вводный текст перед обновлением");
+    assert.equal(await page.locator("#include-intro").isChecked(), false);
     assert.equal(await page.locator("#client").inputValue(), "Учебный клиент");
     assert.equal(await page.getByRole("checkbox", { name: "Включить в документ TS-1.A", exact: true }).isChecked(), false);
     assert.match(await page.locator("#source-link").getAttribute("href"), /^https:\/\/wiki\.example\.invalid\//);

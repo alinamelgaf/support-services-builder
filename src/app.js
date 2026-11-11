@@ -4,7 +4,7 @@ import { buildProposal, buildServiceRows, DEFAULT_OPTION, defaultSelection, isIn
 import {
   DEFAULTS_FILENAME, defaultDifferences, initialDefaults, overlayDefaults, parseDefaults, readDefaults, serializeDefaults, snapshotDefaults, writeDefaults,
 } from "./package-defaults.js";
-import { createIntroEditor } from "./intro-editor.js";
+import { documentOptions, sectionReason, SECTION_LABELS } from "./document-sections.js";
 import { renderRich } from "./rich-dom.js";
 import { generateExcel } from "./excel.js";
 import { generateWord } from "./word.js";
@@ -25,6 +25,8 @@ const state = {
   base: "",
   conflict: false,
   catalog: null,
+  sections: {},
+  documentOptions: documentOptions(),
   busy: false,
 };
 const batch = createImportBatch();
@@ -35,11 +37,35 @@ let draftTouched = false;
 let defaultsUnsaved = false;
 let sourcesUnsaved = false;
 const downloads = [...document.querySelectorAll("[data-format]")];
-const introEditor = createIntroEditor({
-  editor: $("#intro-text"), toolbar: $("#intro-toolbar"), label: $("#intro-variant"),
-  excel: $("#intro-excel"), word: $("#intro-word"), feedback: $("#intro-feedback"),
-  onChange: draftChanged,
-});
+const slaModes = [...document.querySelectorAll('input[name="sla-mode"]')];
+
+function renderDocumentOptions() {
+  for (const key of Object.keys(SECTION_LABELS)) {
+    const reason = sectionReason(key, state.sections, state.selected);
+    const checkbox = $(`#include-${key}`);
+    checkbox.disabled = state.busy || Boolean(reason);
+    checkbox.checked = !reason && state.documentOptions.included[key];
+    $(`#reason-${key}`).textContent = reason;
+  }
+  for (const radio of slaModes) {
+    radio.disabled = $("#include-sla").disabled || !$("#include-sla").checked;
+    radio.checked = radio.value === state.documentOptions.slaMode;
+  }
+}
+
+for (const key of Object.keys(SECTION_LABELS)) {
+  $(`#include-${key}`).addEventListener("change", (event) => {
+    state.documentOptions.included[key] = event.target.checked;
+    renderDocumentOptions();
+    draftChanged();
+  });
+}
+for (const radio of slaModes) {
+  radio.addEventListener("change", () => {
+    state.documentOptions.slaMode = radio.value;
+    draftChanged();
+  });
+}
 
 function node(tag, text = "", className = "") {
   const element = document.createElement(tag);
@@ -56,7 +82,7 @@ function notice(selector, message, error = false) {
 }
 
 function hasDraftChanges() {
-  return state.overrides.size || state.documentOverrides.size || introEditor.differs(state.defaults.introductions);
+  return state.overrides.size || state.documentOverrides.size;
 }
 
 function draftChanged() {
@@ -75,6 +101,7 @@ function setBusy(busy) {
   $("#export-defaults").disabled = busy || !state.local;
   $("#save-sources").disabled = $("#reset-batch").disabled = busy;
   for (const button of downloads) button.disabled = busy || !state.services.length;
+  renderDocumentOptions();
 }
 
 function renderOptions() {
@@ -86,7 +113,7 @@ function renderOptions() {
     radio.checked = code === state.selected;
     radio.addEventListener("change", () => {
       state.selected = code;
-      introEditor.show(code);
+      renderDocumentOptions();
       markSelected();
       draftChanged();
     });
@@ -252,6 +279,7 @@ async function importCatalog(files) {
     state.standard = next;
     state.base = result.base;
     state.services = result.services;
+    state.sections = result.sections;
     const conflicts = result.usableStandard ? defaultDifferences(next, state.local, state.services) : [];
     state.conflict = dirty || conflicts.length > 0;
     if (dirty) {
@@ -264,7 +292,7 @@ async function importCatalog(files) {
     }
     const kind = result.legacy ? "прежний формат каталога" : "страницы REST объединены";
     const catalogMessage = errors
-      ? "Есть ошибки импорта. Проверьте список ниже перед формированием документов."
+      ? "Есть ошибки импорта. Проверьте список ниже. Некорректные дополнительные разделы недоступны."
       : !result.usableStandard ? "Эта загрузка не содержит полного стандарта. Проверьте источники перед использованием настроек Confluence." : "";
     state.catalog = {
       issues: result.issues, summary: `Услуг загружено ${state.services.length} из ${result.pages} карточек · ${kind}`,
@@ -300,7 +328,6 @@ function downloadFile(file, filename) {
 function clearDraft() {
   state.overrides.clear();
   state.documentOverrides.clear();
-  introEditor.load(state.defaults.introductions, state.selected);
   renderServices();
   notice("#export-notice", "");
 }
@@ -346,10 +373,10 @@ function applyLayer(layer) {
 
 function fixDefaults() {
   if (state.busy || !state.services.length) return;
-  if (!window.confirm("Сохранить состав и параметры пакетов, включение услуг в документ и вводные тексты с настройками экспорта по умолчанию? Ранее сохранённые настройки будут заменены")) return;
+  if (!window.confirm("Сохранить состав и параметры пакетов и включение услуг в документ по умолчанию? Ранее сохранённые настройки будут заменены.")) return;
   try {
     const rows = buildServiceRows(state.services, serviceSettings());
-    applyDefaults(snapshotDefaults(state.local ?? initialDefaults(), rows, introEditor.values));
+    applyDefaults(snapshotDefaults(state.local ?? initialDefaults(), rows));
   } catch (error) {
     notice("#defaults-notice", error.message, true);
   }
@@ -361,7 +388,7 @@ async function importDefaults(file) {
   try {
     if (file.size > MAX_BYTES) throw new Error("Размер файла настроек превышает 64 МБ.");
     const settings = parseDefaults(new TextDecoder("utf-8", { fatal: true }).decode(await file.arrayBuffer()));
-    if (!window.confirm("Заменить локальные настройки настройками из файла? Текущие правки пакетов и вводных текстов будут сброшены.")) return;
+    if (!window.confirm("Заменить локальные настройки настройками из файла? Текущие правки пакетов будут сброшены.")) return;
     applyDefaults(settings);
   } catch (error) {
     notice("#defaults-notice", error instanceof TypeError ? "Не удалось прочитать файл настроек в кодировке UTF-8." : error.message, true);
@@ -384,7 +411,8 @@ async function exportProposal(format) {
     title: $("#title").value,
     selected: state.selected,
     ...serviceSettings(),
-    introductions: introEditor.values,
+    sections: state.sections,
+    document: state.documentOptions,
     confluenceBases: [state.base, sources.base],
   };
   const label = format === "excel" ? "Excel" : "Word";
@@ -416,12 +444,12 @@ $("#export-defaults").addEventListener("click", () => downloadFile(
 $("#import-defaults").addEventListener("click", () => $("#defaults-file").click());
 $("#defaults-file").addEventListener("change", (event) => importDefaults(event.target.files[0]));
 $("#reset").addEventListener("click", () => {
-  if (!window.confirm("Восстановить локальные настройки? Текущие правки пакетов и вводных текстов будут сброшены.")) return;
+  if (!window.confirm("Восстановить локальные настройки? Текущие правки пакетов будут сброшены.")) return;
   applyLayer("local");
   notice("#defaults-notice", "Восстановлены локальные настройки менеджера.");
 });
 $("#apply-standard").addEventListener("click", () => {
-  if (!window.confirm("Применить стандарт Confluence? Текущие правки пакетов и вводных текстов будут сброшены. Сохранённые настройки менеджера останутся доступны.")) return;
+  if (!window.confirm("Применить стандарт Confluence? Текущие правки пакетов будут сброшены. Сохранённые настройки менеджера останутся доступны.")) return;
   applyLayer("corporate");
   notice("#defaults-notice", "Применён стандарт Confluence.");
 });
@@ -440,7 +468,6 @@ try {
 } catch {
   notice("#defaults-notice", "Не удалось прочитать настройки из хранилища браузера. Можно загрузить файл настроек.", true);
 }
-introEditor.load(state.defaults.introductions, state.selected);
 renderOptions();
 showLayer();
 setBusy(false);
@@ -512,7 +539,7 @@ function snapshotProposal() {
   const { selected, services, overrides, documentOverrides, defaults, standard, hasStandard, layer, base, catalog, conflict } = state;
   return {
     selected, services, overrides, documentOverrides, defaults, standard, hasStandard, layer, base, catalog, conflict,
-    client: $("#client").value, title: $("#title").value, introductions: introEditor.values,
+    client: $("#client").value, title: $("#title").value, sections: state.sections, documentOptions: state.documentOptions,
     conflictText: $("#conflict-notice").textContent,
   };
 }
@@ -520,15 +547,21 @@ function snapshotProposal() {
 function restoreProposal(saved) {
   const { selected, services, overrides, documentOverrides, defaults, standard, hasStandard, layer, base, catalog, conflict } = saved;
   if (!OPTIONS.some(({ code }) => code === selected) || !Array.isArray(services) ||
-      !(overrides instanceof Map) || !(documentOverrides instanceof Map) || !defaults || !standard ||
-      !OPTIONS.every(({ code }) => Array.isArray(saved.introductions?.[code]?.blocks))) {
+      !(overrides instanceof Map) || !(documentOverrides instanceof Map) || !defaults?.values || !standard?.values) {
     throw new Error("Сохранённый черновик не удалось прочитать.");
   }
-  Object.assign(state, { selected, services, overrides, documentOverrides, defaults, standard, hasStandard, layer, base, catalog, conflict });
+  const packageSettings = ({ values, includedInDocument }) => ({ values, includedInDocument });
+  const previousIntro = standard.introductions && Object.fromEntries(OPTIONS.map(({ code }) => [
+    code, standard.introductions[code]?.blocks ?? [],
+  ]));
+  Object.assign(state, {
+    selected, services, overrides, documentOverrides, defaults: packageSettings(defaults), standard: packageSettings(standard),
+    hasStandard, layer, base, catalog, conflict, documentOptions: documentOptions(saved.documentOptions),
+    sections: saved.sections ?? (previousIntro ? { intro: { data: previousIntro } } : {}),
+  });
   $("#client").value = saved.client;
   $("#title").value = saved.title;
   for (const radio of document.querySelectorAll('input[name="proposal-variant"]')) radio.checked = radio.value === selected;
-  introEditor.load(saved.introductions, selected);
   renderServices();
   showLayer();
   if (catalog) {

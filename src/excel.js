@@ -1,7 +1,7 @@
 import ExcelJS from "exceljs";
 import JSZip from "jszip";
 import { COMPARISON_HEADERS, CONDITIONS_TITLE } from "./proposal.js";
-import { hasIntroText } from "./introductions.js";
+import { SECTION_LABELS } from "./document-sections.js";
 import { flattenRich } from "./rich-text.js";
 
 const NAVY = "FF243B56";
@@ -104,7 +104,7 @@ function cellValue(segments, bold) {
   })) };
 }
 
-function writeRows(sheet, rows, widths, start, selected = -1) {
+function writeRows(sheet, rows, widths, start, { selected = -1, groupSize = 1 } = {}) {
   let rowNumber = start;
   const firstRows = [];
   rows.forEach((row, index) => {
@@ -119,16 +119,70 @@ function writeRows(sheet, rows, widths, start, selected = -1) {
         cell.value = cellValue(piece?.segments ?? [], col === 0);
         cell.font = { ...FONT, bold: col === 0 };
         cell.alignment = { vertical: "middle", horizontal: selected >= 0 && col >= 2 ? "center" : "left", wrapText: true };
-        cell.fill = fill(col === selected ? PALE_TEAL : index % 2 ? PALE_BLUE : WHITE);
-        if (part === 0) cell.border = { top: { style: "thin", color: { argb: GRAY } } };
+        cell.fill = fill(col === selected ? PALE_TEAL : Math.floor(index / groupSize) % 2 ? PALE_BLUE : WHITE);
+        if (part === 0 && index % groupSize === 0) cell.border = { top: { style: "thin", color: { argb: GRAY } } };
         height = Math.max(height, 8 + 15 * (piece?.lines ?? 1));
       });
       sheet.getRow(rowNumber).height = height;
       rowNumber += 1;
     }
   });
-  sheet.pageSetup.printArea = `A1:${String.fromCharCode(64 + widths.length)}${rowNumber - 1}`;
+  // ExcelJS adds the absolute column markers. Add the row markers here.
+  sheet.pageSetup.printArea = `A$1:${String.fromCharCode(64 + widths.length)}$${rowNumber - 1}`;
   return firstRows;
+}
+
+function addReferenceSheets(workbook, sections) {
+  function referenceSheet(key, headers, widths, rows, style) {
+    const title = SECTION_LABELS[key];
+    const sheet = layout(workbook, title, title, widths, headers, 2);
+    sheet.getRow(2).height = 32;
+    if (style?.selected >= 0) header(sheet.getCell(2, style.selected + 1), headers[style.selected], TEAL);
+    const firstRows = writeRows(sheet, rows, widths, 3, style);
+    return { sheet, firstRows };
+  }
+  if (sections.sla) {
+    const { headers, groups, selectedColumn } = sections.sla;
+    const comparative = headers.length > 3;
+    const groupSize = groups[0].rows.length;
+    const rows = groups.flatMap(({ label, rows }) => rows.map((cells, index) => [
+      runs(index ? "" : label), ...cells.map(runs),
+    ]));
+    const { sheet, firstRows } = referenceSheet("sla", headers, comparative ? [24, 38, 23, 23, 23] : [27, 48, 39], rows, {
+      selected: comparative ? selectedColumn : -1,
+      groupSize,
+    });
+    // Keep each severity group together when it fits an A4 landscape page.
+    sheet.pageSetup.fitToPage = false;
+    sheet.headerFooter.differentFirst = true;
+    sheet.headerFooter.oddHeader = "&LМатрица SLA&R" + headers.slice(2).join("  |  ");
+    const groupStarts = groups.map((_, index) => firstRows[index * groupSize]);
+    let height = sheet.getRow(1).height + sheet.getRow(2).height;
+    groupStarts.forEach((start, index) => {
+      const end = groupStarts[index + 1] ?? sheet.rowCount + 1;
+      let groupHeight = 0;
+      for (let row = start; row < end; row += 1) groupHeight += sheet.getRow(row).height;
+      if (index && height + groupHeight > 520) {
+        sheet.getRow(start - 1).addPageBreak(1, 16384);
+        height = sheet.getRow(2).height;
+      }
+      height += groupHeight;
+    });
+  }
+  if (sections.severity) {
+    referenceSheet("severity", ["Код", "Наименование", "Краткое описание", "Полное описание"], [10, 28, 34, 84],
+      sections.severity.map(({ code, name, short, description }) => [
+        runs(code), runs(name), flattenRich(short, true), flattenRich(description, true),
+      ]));
+  }
+  if (sections.assumptions) {
+    referenceSheet("assumptions", ["Раздел", "Формулировка"], [23, 104],
+      sections.assumptions.map(({ category, wording }) => [runs(category), flattenRich(wording, true)]));
+  }
+  if (sections.glossary) {
+    referenceSheet("glossary", ["Термин RU", "Term ENG", "Определение RU"], [25, 24, 84],
+      sections.glossary.map(({ term, english, definition }) => [runs(term), runs(english), flattenRich(definition, true)]));
+  }
 }
 
 async function addInternalLinks(workbook, sheet, locations) {
@@ -157,9 +211,9 @@ export async function generateExcel(proposal) {
     runs(id), runs(name), flattenRich(description, true), flattenRich(conditions, true),
   ]), DESCRIPTION_WIDTHS, 3);
 
-  const intro = proposal.introduction;
-  const introRows = intro.excel && hasIntroText(intro.blocks)
-    ? chunks(flattenRich(intro.blocks, true), MATRIX_WIDTHS.reduce((sum, width) => sum + width, 0)) : [];
+  const { sections } = proposal;
+  const introRows = sections.intro
+    ? chunks(flattenRich(sections.intro, true), MATRIX_WIDTHS.reduce((sum, width) => sum + width, 0)) : [];
   const headerRow = 4 + introRows.length;
   const comparison = layout(workbook, "Предложение", proposal.title, MATRIX_WIDTHS, COMPARISON_HEADERS, headerRow, {
     comparison: true, freezeRows: !introRows.length,
@@ -185,12 +239,13 @@ export async function generateExcel(proposal) {
   header(comparison.getCell(headerRow - 1, selected + 1), "Предложение", TEAL);
   header(comparison.getCell(headerRow, selected + 1), COMPARISON_HEADERS[selected], TEAL);
   const matrix = proposal.rows.map(({ id, name, values }) => [runs(id), runs(name), ...values.map(runs)]);
-  const matrixRows = writeRows(comparison, matrix, MATRIX_WIDTHS, headerRow + 1, selected);
+  const matrixRows = writeRows(comparison, matrix, MATRIX_WIDTHS, headerRow + 1, { selected });
   const locations = matrixRows.flatMap((row, index) => ["A", "B"].map((column) => {
     const address = column + row;
     const cell = comparison.getCell(address);
     cell.font = { ...cell.font, underline: true, color: { argb: LINK_COLOR } };
     return [address, descriptionRows[index]];
   }));
+  addReferenceSheets(workbook, sections);
   return addInternalLinks(workbook, comparison, locations);
 }

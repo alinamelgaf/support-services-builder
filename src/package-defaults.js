@@ -1,5 +1,4 @@
 import { XML_INVALID } from "./catalog.js";
-import { emptyIntroduction, introductionFor, validateIntroduction } from "./introductions.js";
 import { BUILTIN_DEFAULTS, OPTIONS } from "./proposal.js";
 
 const FORMAT = "support-services-builder-defaults";
@@ -13,7 +12,6 @@ const isRecord = (value) => value !== null && typeof value === "object" && !Arra
 export function initialDefaults(values = BUILTIN_DEFAULTS) {
   return {
     values, includedInDocument: {},
-    introductions: Object.fromEntries(OPTIONS.map(({ code }) => [code, emptyIntroduction()])),
   };
 }
 
@@ -22,23 +20,18 @@ export function overlayDefaults(standard, local) {
   return {
     values: { ...standard.values, ...local.values },
     includedInDocument: { ...standard.includedInDocument, ...local.includedInDocument },
-    introductions: { ...standard.introductions, ...local.introductions },
   };
 }
 
 export function defaultDifferences(standard, local, services) {
   if (!local) return [];
-  const differences = services.filter(({ id }) => OPTIONS.some(({ code }) =>
+  return services.filter(({ id }) => OPTIONS.some(({ code }) =>
     Object.hasOwn(local.values, id) && local.values[id][code] !== (standard.values[id]?.[code] ?? "-")) ||
     Object.hasOwn(local.includedInDocument, id) && local.includedInDocument[id] !== (standard.includedInDocument[id] ?? true))
     .map(({ id }) => id);
-  for (const { code } of OPTIONS) {
-    if (JSON.stringify(standard.introductions[code]) !== JSON.stringify(local.introductions[code])) differences.push(`Вводный текст ${code}`);
-  }
-  return differences;
 }
 
-export function snapshotDefaults(previous, rows, introductions) {
+export function snapshotDefaults(previous, rows) {
   const loaded = rows.map(({ id, values }) => [
     id, Object.fromEntries(OPTIONS.map(({ code }, index) => [code, values[index]])),
   ]);
@@ -47,9 +40,6 @@ export function snapshotDefaults(previous, rows, introductions) {
     includedInDocument: { ...previous.includedInDocument, ...Object.fromEntries(
       rows.map(({ id, includedInDocument }) => [id, includedInDocument]),
     ) },
-    introductions: Object.fromEntries(OPTIONS.map(({ code }) => [
-      code, validateIntroduction(introductionFor(introductions, code)),
-    ])),
   };
 }
 
@@ -90,12 +80,6 @@ export function parseDefaults(text) {
       throw new Error("Некорректные признаки включения в документ.");
     }
     settings.includedInDocument = Object.fromEntries(flags);
-  }
-  if (data.introductions !== undefined) {
-    if (!isRecord(data.introductions)) throw new Error("Некорректные вводные тексты пакетов.");
-    settings.introductions = Object.fromEntries(OPTIONS.map(({ code }) => [
-      code, validateIntroduction(introductionFor(data.introductions, code)),
-    ]));
   }
   return settings;
 }

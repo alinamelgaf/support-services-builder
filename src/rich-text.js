@@ -195,6 +195,12 @@ export function plainText(blocks) {
   return flattenRich(blocks).map(({ text }) => text).join("");
 }
 
+export function hasRichText(blocks) {
+  return blocks.some((block) => block.kind === "paragraph"
+    ? block.runs.some(({ text }) => text.trim())
+    : block.items.some((item) => hasRichText(item.blocks)));
+}
+
 export function withoutSourceLinks(blocks, bases) {
   const origins = new Set(bases.filter(Boolean).map((base) => new URL(base).origin));
   const isSource = (href) => {

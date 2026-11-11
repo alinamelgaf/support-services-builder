@@ -4,7 +4,7 @@ import {
   UnderlineType, VerticalAlignTable, WidthType,
 } from "docx";
 import { COMPARISON_HEADERS, CONDITIONS_TITLE } from "./proposal.js";
-import { hasIntroText } from "./introductions.js";
+import { SECTION_LABELS } from "./document-sections.js";
 import { linkGroups, plainText } from "./rich-text.js";
 
 const NAVY = "243B56";
@@ -34,16 +34,28 @@ function children(runs) {
   return result;
 }
 
-function tableCell(text, width, { background, white = false, bold = false, center = false }) {
+function tableCell(text, width, { background, white = false, bold = false, center = false, keepNext, numbering }) {
+  const body = typeof text === "string" ? [{
+    children: textRuns({ text, bold }, { size: 20, color: white ? WHITE : INK }),
+  }] : [...renderBlocks(text, numbering)];
   return new TableCell({
     width: { size: width, type: WidthType.DXA },
     verticalAlign: VerticalAlignTable.CENTER,
     shading: { type: ShadingType.CLEAR, fill: background },
-    children: [new Paragraph({
-      alignment: center ? AlignmentType.CENTER : AlignmentType.LEFT,
-      spacing: { before: 40, after: 40, line: 268 },
-      children: textRuns({ text, bold }, { size: 20, color: white ? WHITE : INK }),
-    })],
+    children: body.map((paragraph) => new Paragraph({
+      ...paragraph, alignment: center ? AlignmentType.CENTER : AlignmentType.LEFT,
+      spacing: { before: 40, after: 40, line: 268 }, keepNext,
+    })),
+  });
+}
+
+function fixedTable(rows, widths) {
+  return new Table({
+    width: { size: widths.reduce((sum, width) => sum + width, 0), type: WidthType.DXA },
+    columnWidths: widths, layout: TableLayoutType.FIXED, alignment: AlignmentType.CENTER,
+    margins: { top: 45, bottom: 45, left: 100, right: 100 },
+    borders: { top: BORDER, bottom: BORDER, left: BORDER, right: BORDER, insideHorizontal: BORDER, insideVertical: BORDER },
+    rows,
   });
 }
 
@@ -67,13 +79,7 @@ function composition(proposal) {
       bold: index === 0, center: index >= 2,
     }), { cantSplit: short });
   });
-  return new Table({
-    width: { size: WIDTHS.reduce((sum, width) => sum + width, 0), type: WidthType.DXA },
-    columnWidths: WIDTHS, layout: TableLayoutType.FIXED, alignment: AlignmentType.CENTER,
-    margins: { top: 45, bottom: 45, left: 100, right: 100 },
-    borders: { top: BORDER, bottom: BORDER, left: BORDER, right: BORDER, insideHorizontal: BORDER, insideVertical: BORDER },
-    rows: [marker, header, ...rows],
-  });
+  return fixedTable([marker, header, ...rows], WIDTHS);
 }
 
 function* renderBlocks(blocks, numbering, depth = 0, prefix) {
@@ -130,20 +136,83 @@ function serviceSections(rows, numbering) {
   return sections;
 }
 
+const sectionHeading = (key) => new Paragraph({ heading: HeadingLevel.HEADING_1, text: SECTION_LABELS[key], keepNext: true });
+const subheading = (text) => new Paragraph({ heading: HeadingLevel.HEADING_2, text, keepNext: true });
+
+function referenceHeader(headers, widths, selected = -1) {
+  return new TableRow({
+    tableHeader: true, cantSplit: true,
+    children: headers.map((text, column) => tableCell(text, widths[column], {
+      background: column === selected ? TEAL : NAVY, white: true, bold: true, keepNext: true,
+    })),
+  });
+}
+
+function slaTable({ headers, selectedColumn, groups }) {
+  const widths = headers.length === 3 ? [2320, 4300, 3697] : [1930, 2457, 1976, 1977, 1977];
+  const selected = headers.length > 3 ? selectedColumn : -1;
+  const rows = groups.flatMap(({ label, rows }, group) => {
+    const keepGroup = rows.flat().every((text) => text.length <= 110 && text.split("\n").length <= 2);
+    return rows.map((cells, index) => new TableRow({
+      cantSplit: cells.every((text) => text.length <= 360 && text.split("\n").length <= 8),
+      children: [index ? "" : label, ...cells].map((text, column) => tableCell(text, widths[column], {
+        background: column === selected ? PALE_TEAL : group % 2 ? PALE_BLUE : WHITE,
+        bold: column === 0,
+        keepNext: keepGroup && index < rows.length - 1,
+      })),
+    }));
+  });
+  return fixedTable([referenceHeader(headers, widths, selected), ...rows], widths);
+}
+
+function referenceSections(sections, numbering) {
+  const content = [];
+  const paragraphs = (blocks) => [...renderBlocks(blocks, numbering)].map((paragraph) => new Paragraph(paragraph));
+  if (sections.sla) content.push(sectionHeading("sla"), slaTable(sections.sla));
+  if (sections.severity) {
+    content.push(sectionHeading("severity"));
+    for (const { code, name, short, description } of sections.severity) {
+      content.push(subheading(`${code} — ${name}`), ...paragraphs(short), ...paragraphs(description));
+    }
+  }
+  if (sections.assumptions) {
+    content.push(sectionHeading("assumptions"));
+    let previous;
+    for (const { category, wording } of sections.assumptions) {
+      if (category !== previous) content.push(subheading(category));
+      previous = category;
+      content.push(...paragraphs(wording));
+    }
+  }
+  if (sections.glossary) {
+    const widths = [2000, 1800, 6517];
+    const rows = sections.glossary.map(({ term, english, definition }, index) => new TableRow({
+      cantSplit: plainText(definition).length <= 450 && definition.length <= 6,
+      children: [term, english, definition].map((text, column) => tableCell(text, widths[column], {
+        background: index % 2 ? PALE_BLUE : WHITE, bold: column === 0, numbering,
+      })),
+    }));
+    content.push(sectionHeading("glossary"), fixedTable([
+      referenceHeader(["Термин RU", "Term ENG", "Определение RU"], widths), ...rows,
+    ], widths));
+  }
+  return content;
+}
+
 export async function generateWord(proposal) {
   const numbering = [];
-  const intro = proposal.introduction;
+  const { sections } = proposal;
   const content = [
     new Paragraph({ heading: HeadingLevel.TITLE, text: proposal.title, keepNext: true }),
     ...(proposal.clientLine ? [new Paragraph({ text: proposal.clientLine, keepNext: true })] : []),
-    ...(intro.word && hasIntroText(intro.blocks)
-      ? [...renderBlocks(intro.blocks, numbering)].map((paragraph) => new Paragraph(paragraph)) : []),
+    ...(sections.intro ? [...renderBlocks(sections.intro, numbering)].map((paragraph) => new Paragraph(paragraph)) : []),
     new Paragraph({ heading: HeadingLevel.HEADING_1, text: "Состав вариантов поддержки", keepNext: true }),
     composition(proposal),
     ...(proposal.rows.length ? [
       new Paragraph({ heading: HeadingLevel.HEADING_1, text: "Описания услуг", keepNext: true }),
       ...serviceSections(proposal.rows, numbering),
     ] : []),
+    ...referenceSections(sections, numbering),
   ];
   const document = new Document({
     creator: "Support Services Builder", title: proposal.title, numbering: { config: numbering },

@@ -1,6 +1,6 @@
 import presets from "../config/presets.json" with { type: "json" };
 import { XML_INVALID } from "./catalog.js";
-import { introductionFor } from "./introductions.js";
+import { buildDocumentSections } from "./document-sections.js";
 import { withoutSourceLinks } from "./rich-text.js";
 
 export const OPTIONS = presets.options;
@@ -51,19 +51,20 @@ export function buildServiceRows(services, {
   }));
 }
 
-export function buildProposal(services, { title = "", client = "", selected, introductions = {}, confluenceBases = [], ...settings }) {
+export function buildProposal(services, {
+  title = "", client = "", selected, sections = {}, document, confluenceBases = [], ...settings
+}) {
   if (!services.length) throw new Error("Загрузите каталог с корректными карточками услуг.");
   const titleText = textInput(title, "Название предложения", true).trim() || DEFAULT_TITLE;
   const clientText = textInput(client, "Клиент", true).trim();
   const selectedIndex = OPTIONS.findIndex(({ code }) => code === selected);
   if (selectedIndex < 0) throw new Error("Выберите один вариант поддержки.");
-  const introduction = introductionFor(introductions, selected);
   return {
     title: titleText, clientLine: clientText ? `Клиент — ${clientText}` : "", selectedIndex,
     rows: buildServiceRows(services, { ...settings, forExport: true }).map((row) => ({
       ...row, description: withoutSourceLinks(row.description, confluenceBases),
       conditions: withoutSourceLinks(row.conditions, confluenceBases),
     })),
-    introduction: { ...introduction, blocks: withoutSourceLinks(introduction.blocks, confluenceBases) },
+    sections: buildDocumentSections(sections, document, selected, OPTIONS.map(({ code }) => code), confluenceBases),
   };
 }

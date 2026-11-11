@@ -52,7 +52,7 @@
           <label>Ключ пространства <span class="optional">необязательно</span><input id="source-space" autocomplete="off"></label>
         </div>
         <div class="fields source-fields" id="source-labels"></div>
-        <p>Заполните адрес и первые три метки для ссылки на REST. Остальные метки зарезервированы для следующих версий.</p>
+        <p>Укажите адрес Confluence, ключ пространства и метки страниц-источников. Настройки сохраняются локально в браузере</p>
         <button class="button" type="button" id="save-sources">Сохранить источники локально</button>
         <p id="sources-notice" class="notice" role="status" hidden></p>
       </details>
@@ -79,24 +79,21 @@
         <legend>Вариант для клиента</legend>
         <div class="variants" id="variants"></div>
       </fieldset>
-      <fieldset class="introduction">
-        <legend>Вводный текст <span class="intro-variant" id="intro-variant"></span></legend>
-        <div class="actions editor-tools" id="intro-toolbar" role="group" aria-label="Форматирование вводного текста">
-          <button class="button tool bold" type="button" data-command="bold" aria-label="Жирный" title="Жирный">Ж</button>
-          <button class="button tool italic" type="button" data-command="italic" aria-label="Курсив" title="Курсив">К</button>
-          <button class="button tool underline" type="button" data-command="underline" aria-label="Подчёркивание" title="Подчёркивание">Ч</button>
-          <button class="button tool" type="button" data-command="insertUnorderedList" aria-label="Маркированный список">• Список</button>
-          <button class="button tool" type="button" data-command="insertOrderedList" aria-label="Нумерованный список">1. Список</button>
-          <button class="button tool" type="button" data-command="createLink">Ссылка</button>
-          <button class="button tool" type="button" data-command="undo" disabled>Отмена</button>
-          <button class="button tool" type="button" data-command="redo" disabled>Повтор</button>
-        </div>
-        <div id="intro-text" class="intro-editor" contenteditable="true" role="textbox" aria-multiline="true"
-             aria-label="Вводный текст" aria-describedby="intro-variant"></div>
-        <p class="editor-feedback" id="intro-feedback" role="status"></p>
-        <div class="intro-options">
-          <label><input type="checkbox" id="intro-excel"> Добавить в Excel</label>
-          <label><input type="checkbox" id="intro-word" checked> Добавить в Word</label>
+      <fieldset class="document-options">
+        <legend>Состав документа</legend>
+        <div class="document-sections" id="document-sections">
+          <div><label><input type="checkbox" id="include-intro" aria-describedby="reason-intro"> Вводный текст</label><small id="reason-intro"></small></div>
+          <div>
+            <label><input type="checkbox" id="include-sla" aria-describedby="reason-sla"> Матрица SLA</label><small id="reason-sla"></small>
+            <div class="sla-modes" role="group" aria-label="Представление матрицы SLA">
+              <label><input type="radio" name="sla-mode" value="selected"> Только выбранный уровень поддержки</label>
+              <label><input type="radio" name="sla-mode" value="all"> Все уровни с выделением выбранного</label>
+            </div>
+          </div>
+          <div><label><input type="checkbox" id="include-severity" aria-describedby="reason-severity"> Уровни критичности</label><small id="reason-severity"></small></div>
+          <div><label><input type="checkbox" id="include-raci" aria-describedby="reason-raci"> Матрица RACI</label><small id="reason-raci"></small></div>
+          <div><label><input type="checkbox" id="include-assumptions" aria-describedby="reason-assumptions"> Допущения и ограничения</label><small id="reason-assumptions"></small></div>
+          <div><label><input type="checkbox" id="include-glossary" aria-describedby="reason-glossary"> Глоссарий</label><small id="reason-glossary"></small></div>
         </div>
       </fieldset>
     </section>

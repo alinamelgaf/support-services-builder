@@ -16,7 +16,7 @@ const importRest = (data = fixture()) => createImportBatch().add([data], sources
 test("maps three REST sources by label and IDs, preserving rich content and independent modifications", () => {
   const data = fixture({ extra: true });
   data.results[0] = { content: data.results[0] };
-  const { services, standard, issues, usableStandard } = importRest(data);
+  const { services, standard, sections, issues, usableStandard } = importRest(data);
   assert.equal(usableStandard, true);
   assert.deepEqual(services.map(({ id }) => id), [...IDS.slice(0, 3), "TS-3.B", "TS-4", ...IDS.slice(3)]);
   assert.equal(services[0].name, "Пример TS-1");
@@ -24,11 +24,9 @@ test("maps three REST sources by label and IDs, preserving rich content and inde
   assert.equal(standard.values["TS-3.B"].Extended, "6 часов");
   assert.equal(standard.includedInDocument["TS-2"], false);
   assert.match(plainText(services[0].description), /Демонстрация.*Справочная карточка.*инструкция/);
-  assert.equal(flattenRich(standard.introductions.Extended.blocks)[0].italics, true);
-  assert.equal(standard.introductions.Standard.blocks[1].kind, "list");
-  assert.equal(standard.introductions["Managed Service"].blocks[1].ordered, true);
-  assert.equal(standard.introductions.Standard.excel, false);
-  assert.equal(standard.introductions.Standard.word, true);
+  assert.equal(flattenRich(sections.intro.data.Extended)[0].italics, true);
+  assert.equal(sections.intro.data.Standard[1].kind, "list");
+  assert.equal(sections.intro.data["Managed Service"][1].ordered, true);
   assert.ok(issues.some(({ message }) => message.includes("TS-99")));
   assert.ok(issues.some(({ message }) => message.includes("TS-4")));
   assert.ok(!JSON.stringify(services).includes("pixel.example.invalid"));
@@ -90,7 +88,7 @@ for (const pageCount of [28, 50, 51]) {
     assert.equal(imported.data.services.length, catalogCount);
     assert.equal(imported.data.usableStandard, true);
     assert.equal(Object.keys(imported.data.standard.values).length, catalogCount);
-    assert.match(plainText(imported.data.standard.introductions.Extended.blocks), /Пример Extended/);
+    assert.match(plainText(imported.data.sections.intro.data.Extended), /Пример Extended/);
     assert.deepEqual(imported.data.issues, []);
   });
 }
@@ -99,11 +97,11 @@ test("reads a horizontal table of introductory texts and rejects incomplete labe
   const data = fixture();
   data.results.at(-1).body.storage.value = "<table><tr><th>Standard</th><th>Extended</th><th>Managed Service</th></tr>" +
     "<tr><td><b>Первый</b></td><td></td><td><ul><li>Третий</li></ul></td></tr></table>";
-  const { standard, usableStandard } = importRest(data);
+  const { sections, usableStandard } = importRest(data);
   assert.equal(usableStandard, true);
-  assert.equal(flattenRich(standard.introductions.Standard.blocks)[0].bold, true);
-  assert.equal(standard.introductions.Extended.blocks.length, 0);
-  assert.equal(standard.introductions["Managed Service"].blocks[0].kind, "list");
+  assert.equal(flattenRich(sections.intro.data.Standard)[0].bold, true);
+  assert.equal(sections.intro.data.Extended.length, 0);
+  assert.equal(sections.intro.data["Managed Service"][0].kind, "list");
   data.results[0].metadata.labels.totalSize = 5;
   assert.throws(() => importRest(data), /metadata.labels/);
 });
@@ -113,11 +111,12 @@ test("keeps local settings separate from updated standard, with corporate fallba
   const overrides = new Map([["TS-1", new Map([["Standard", { included: true, parameter: "7 часов локально" }]])]]);
   const rows = buildServiceRows(services, { defaults: standard.values, overrides, documentDefaults: standard.includedInDocument,
     documentOverrides: new Map([["TS-1.A", false]]) });
-  const saved = snapshotDefaults(initialDefaults(), rows, standard.introductions);
+  const saved = snapshotDefaults(initialDefaults(), rows);
   const values = new Map();
   const storage = { setItem: (key, value) => values.set(key, value), getItem: (key) => values.get(key) ?? null };
   writeDefaults(storage, saved);
   assert.deepEqual(parseDefaults(serializeDefaults(saved)), saved);
+  assert.deepEqual(parseDefaults(JSON.stringify({ ...JSON.parse(serializeDefaults(saved)), introductions: { Standard: "legacy" } })), saved);
   const legacySettings = { ...JSON.parse(serializeDefaults(saved)), schemaVersion: 1 };
   assert.deepEqual(parseDefaults(JSON.stringify(legacySettings)), initialDefaults(saved.values));
   const updated = importRest(fixture({ parameter: "18 часов", extra: true }));
@@ -133,10 +132,9 @@ test("keeps local settings separate from updated standard, with corporate fallba
 });
 
 test("generates the same ordered selection in Excel and Word with rich intros and internal links only in Excel", async () => {
-  const { services, standard } = importRest();
-  const introduction = { ...standard.introductions.Extended, excel: true };
+  const { services, standard, sections } = importRest();
   const proposal = buildProposal(services, { selected: "Extended", defaults: standard.values,
-    documentDefaults: standard.includedInDocument, introductions: { ...standard.introductions, Extended: introduction }, confluenceBases: [BASE] });
+    documentDefaults: standard.includedInDocument, sections, confluenceBases: [BASE] });
   assert.deepEqual(proposal.rows.map(({ id }) => id), IDS.filter((id) => id !== "TS-2"));
   const [bytes, docx] = await Promise.all([generateExcel(proposal), generateWord(proposal)]);
   const [xlsx, word] = await Promise.all([JSZip.loadAsync(bytes), JSZip.loadAsync(await docx.arrayBuffer())]);
