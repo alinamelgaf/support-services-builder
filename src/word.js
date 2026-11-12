@@ -154,7 +154,7 @@ function referenceHeader(headers, widths, highlighted = false) {
   return new TableRow({
     tableHeader: true, cantSplit: true,
     children: headers.map((text, column) => tableCell(text, widths[column], {
-      background: highlighted ? TEAL : NAVY, white: true, bold: true, keepNext: true,
+      background: highlighted ? TEAL : NAVY, white: true, bold: true, center: true, keepNext: true,
     })),
   });
 }

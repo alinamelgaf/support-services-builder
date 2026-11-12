@@ -218,6 +218,54 @@ test("exports optional Word sections and Excel sheets in order with selected SLA
   }
 });
 
+test("centers every table header in Word and Excel across all packages and SLA layouts", async () => {
+  const result = read();
+  const firstHeaders = {
+    "Описание услуг": "ID услуги", "Предложение": "ID услуги", "Уровни критичности": "Код",
+    "Допущения и ограничения": "Раздел", "Глоссарий": "Термин RU",
+  };
+  for (const selected of packages) {
+    for (const [slaMode, slaFormat] of [["selected", "comparison"], ["all", "separate"], ["all", "comparison"]]) {
+      const model = proposal(result, selected, { included, slaMode, slaFormat });
+      const [excel, word] = await Promise.all([generateExcel(model), generateWord(model)]);
+      const workbook = new ExcelJS.Workbook();
+      await workbook.xlsx.load(excel);
+      for (const sheet of workbook.worksheets) {
+        const sla = sheet.name === "Матрица SLA";
+        const firstHeader = sla ? model.sections.sla[0].headers[0] : firstHeaders[sheet.name];
+        const headerWidth = sla ? model.sections.sla[0].headers.length : sheet.columnCount;
+        let headers = 0;
+        sheet.eachRow((row) => {
+          if (row.getCell(1).value === firstHeader) {
+            headers += 1;
+            for (let col = 1; col <= headerWidth; col += 1) {
+              assert.deepEqual(row.getCell(col).alignment, { horizontal: "center", vertical: "middle", wrapText: true });
+            }
+          }
+          row.eachCell((cell) => {
+            if (cell.value === "Предложение") {
+              assert.deepEqual(cell.alignment, { horizontal: "center", vertical: "middle", wrapText: true });
+            }
+          });
+        });
+        assert.equal(headers, sla ? model.sections.sla.length : 1, sheet.name);
+      }
+      const zip = await JSZip.loadAsync(await word.arrayBuffer());
+      const xml = await zip.file("word/document.xml").async("string");
+      const headers = [...xml.matchAll(/<w:tr>.*?<\/w:tr>/gs)].map(([row]) => row)
+        .filter((row) => row.includes("<w:tblHeader/>"));
+      assert.equal(headers.length, 4 + model.sections.sla.length + Number(slaMode === "all" && slaFormat === "comparison"));
+      for (const row of headers) {
+        for (const [cell] of row.matchAll(/<w:tc>.*?<\/w:tc>/gs)) {
+          assert.match(cell, /<w:vAlign w:val="center"\/>/);
+          assert.match(cell, /<w:jc w:val="center"\/>/);
+          assert.doesNotMatch(cell, /<w:noWrap\b/);
+        }
+      }
+    }
+  }
+});
+
 test("Word comparative SLA uses the composition table styling and marker for each selected package", async () => {
   const result = read();
   const tableRows = (table) => [...table.matchAll(/<w:tr>.*?<\/w:tr>/gs)].map(([row]) =>
