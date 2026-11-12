@@ -1,10 +1,52 @@
+const CHECKING = "Проверяем обновления…";
+const AVAILABLE = "Новая версия готова. Откройте её, когда закончите работу с предложением.";
+const ERROR = "Не удалось проверить обновления. Проверьте подключение к интернету.";
+const CHECK_BUTTON = "Проверить обновления";
+const INSTALL_BUTTON = "Установить обновление";
+
+function enableUpdatePreview(update, tell) {
+  const preview = document.querySelector("#pwa-preview");
+  const result = document.querySelector("#pwa-preview-result");
+  const show = (text) => tell(text ? "Имитация PWA. " + text : "");
+  let available = false;
+
+  result.addEventListener("change", () => {
+    available = false;
+    update.textContent = CHECK_BUTTON;
+    show("");
+  });
+  update.addEventListener("click", () => {
+    if (available) {
+      available = false;
+      update.textContent = CHECK_BUTTON;
+      show("Установка обновлений в тестовом сценарии недоступна.");
+      return;
+    }
+    preview.hidden = false;
+    update.disabled = result.disabled = true;
+    show(CHECKING);
+    setTimeout(() => {
+      available = result.value === "available";
+      update.textContent = available ? INSTALL_BUTTON : CHECK_BUTTON;
+      show(available ? AVAILABLE : result.value === "error" ? ERROR : "Новая версия не найдена.");
+      update.disabled = result.disabled = false;
+    }, 1000);
+  });
+}
+
 export function enablePwa({ saveDraft, hasPendingImport, isBusy }) {
-  if (!document.querySelector('link[rel="manifest"]') || !isSecureContext || !navigator.serviceWorker) return;
+  const preview = typeof __SSB_STORAGE_PREFIX__ === "string" && Boolean(__SSB_STORAGE_PREFIX__);
+  if (!preview && (!document.querySelector('link[rel="manifest"]') || !isSecureContext || !navigator.serviceWorker)) return;
   const $ = (selector) => document.querySelector(selector);
   const update = $("#update");
   const install = $("#install");
   const notice = $("#pwa-notice");
   const tell = (text) => { notice.textContent = text; notice.hidden = !text; };
+  update.hidden = false;
+  if (preview) {
+    enableUpdatePreview(update, tell);
+    return;
+  }
   const serviceWorker = navigator.serviceWorker;
   const version = $("#version").textContent.trim();
   let registration;
@@ -14,7 +56,6 @@ export function enablePwa({ saveDraft, hasPendingImport, isBusy }) {
   let checking = false;
   let installFailed = false;
   let timeout;
-  $("#pwa-actions").hidden = false;
   update.disabled = true;
 
   window.addEventListener("beforeinstallprompt", (event) => {
@@ -32,9 +73,10 @@ export function enablePwa({ saveDraft, hasPendingImport, isBusy }) {
   });
 
   function available() {
-    if (!registration.waiting) return false;
-    update.textContent = "Установить обновление";
-    tell("Новая версия готова. Откройте её, когда закончите работу с предложением.");
+    // The first installation can briefly wait before there is an active worker to update.
+    if (!registration.active || !registration.waiting) return false;
+    update.textContent = INSTALL_BUTTON;
+    tell(AVAILABLE);
     return true;
   }
 
@@ -103,11 +145,12 @@ export function enablePwa({ saveDraft, hasPendingImport, isBusy }) {
     checking = true;
     installFailed = false;
     update.disabled = true;
+    if (manual) tell(CHECKING);
     try {
       await registration.update();
       if (!available() && manual && !installFailed) tell(registration.installing ? "Обновление загружается…" : `${version}. Новая версия не найдена.`);
     } catch {
-      if (manual) tell("Не удалось проверить обновления. Проверьте подключение к интернету.");
+      if (manual) tell(ERROR);
     } finally {
       checking = false;
       update.disabled = false;

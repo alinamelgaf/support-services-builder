@@ -82,6 +82,15 @@ function html(csp, styleTag, scriptTag, appIcon, manifest = "") {
     .replace("<!-- APP_TITLE -->", () => dev ? "SSB — Тестовая версия" : "Support Services Builder")
     .replace("<!-- DEV_BADGE -->", () => dev ? '\n      <span class="dev-badge">ТЕСТОВАЯ</span>' : "")
     .replace("<!-- DEV_NOTICE -->", () => dev ? '\n    <p class="dev-notice">Локальная тестовая сборка. Настройки и черновики хранятся отдельно.</p>' : "")
+    .replace("<!-- UPDATE_PREVIEW -->", () => dev ? `
+      <div class="update-preview" id="pwa-preview" hidden>
+        <label for="pwa-preview-result">Тестовый ответ PWA</label>
+        <select id="pwa-preview-result">
+          <option value="none">Обновлений нет</option>
+          <option value="available">Доступна новая версия</option>
+          <option value="error">Ошибка проверки</option>
+        </select>
+      </div>` : "")
     .replace("<!-- RELEASE_NOTES -->", () => markdown.render(release.markdown.replace(`## ${version} —`, `## ${displayVersion} —`)))
     .replace("<!-- VERSION -->", () => displayVersion);
 }

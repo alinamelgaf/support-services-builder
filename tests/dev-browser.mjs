@@ -36,6 +36,7 @@ const parameter = (page) => page.getByRole("textbox", { name: "Параметр 
 
 async function save(page, space, value) {
   await page.locator("#sources-panel summary").click();
+  assert.ok(await page.getByRole("textbox", { name: "Вводные тексты", exact: true }).isVisible());
   await page.locator("#source-base").fill(SOURCES.base);
   await page.locator("#source-space").fill(space);
   for (const [key, label] of Object.entries(labels)) await page.locator("#label-" + key).fill(label);
@@ -53,6 +54,66 @@ async function restore(page, space, value) {
   assert.equal(await page.locator("#source-space").inputValue(), space);
   assert.equal(await page.locator("#client").inputValue(), value);
   assert.equal(await parameter(page).inputValue(), value);
+}
+
+async function verifyActionLayout(page) {
+  const actions = page.locator("#pwa-actions");
+  const controls = [actions.getByRole("link", { name: "Помощь" }), actions.locator("#show-release-notes"), actions.locator("#update")];
+  for (const width of [1280, 320]) {
+    await page.setViewportSize({ width, height: 900 });
+    const row = await actions.boundingBox();
+    const boxes = await Promise.all(controls.map((control) => control.boundingBox()));
+    for (const [i, box] of boxes.entries()) {
+      assert.ok(box && box.x >= row.x && box.x + box.width <= row.x + row.width + 1);
+      for (const other of boxes.slice(0, i)) {
+        assert.ok(box.x >= other.x + other.width || box.y >= other.y + other.height);
+      }
+    }
+    const [help, news, update] = boxes;
+    assert.ok(Math.abs(update.x + update.width - row.x - row.width) < 1);
+    if (width === 1280) {
+      assert.equal(help.y, news.y);
+      assert.equal(news.y, update.y);
+      const intro = await page.locator(".intro").boundingBox();
+      const notice = await page.locator("#pwa-notice").boundingBox();
+      const bottom = notice ? notice.y + notice.height : row.y + row.height;
+      assert.ok(intro.y + intro.height - bottom <= 17);
+    } else {
+      assert.ok(help.y < update.y);
+    }
+  }
+}
+
+async function verifyHelpAndNews(page) {
+  const [guide] = await Promise.all([page.waitForEvent("popup"), page.getByRole("link", { name: "Помощь" }).click()]);
+  await guide.getByRole("heading", { name: "Руководство пользователя Support Services Builder" }).waitFor();
+  await guide.close();
+  await page.getByRole("button", { name: "Что нового" }).click();
+  assert.ok(await page.locator("#release-notes").isVisible());
+  await page.locator("#close-release-notes").click();
+}
+
+async function verifyPreview(page) {
+  const result = page.locator("#pwa-preview-result");
+  const update = page.locator("#update");
+  const notice = page.locator("#pwa-notice");
+  assert.equal(await result.isVisible(), false);
+  const timeOrigin = await page.evaluate(() => performance.timeOrigin);
+  await update.click();
+  assert.equal(await update.isDisabled(), true);
+  assert.match(await notice.textContent(), /^Имитация PWA\. Проверяем обновления/);
+  await notice.getByText("Имитация PWA. Новая версия не найдена.", { exact: true }).waitFor();
+  await result.selectOption("available");
+  await update.click();
+  await notice.getByText(/Имитация PWA\. Новая версия готова/).waitFor();
+  assert.equal(await update.textContent(), "Установить обновление");
+  await update.click();
+  assert.match(await notice.textContent(), /^Имитация PWA\. Установка обновлений в тестовом сценарии недоступна/);
+  assert.equal(await page.evaluate(() => performance.timeOrigin), timeOrigin);
+  await result.selectOption("error");
+  await update.click();
+  await notice.getByText(/Имитация PWA\. Не удалось проверить обновления/).waitFor();
+  assert.equal(await update.textContent(), "Проверить обновления");
 }
 
 async function verify(channel) {
@@ -105,10 +166,13 @@ async function verify(channel) {
     });
     await narrow.goto(home);
     assert.equal(await narrow.locator('link[rel="manifest"]').count(), 0);
-    assert.equal(await narrow.locator("#pwa-actions").isVisible(), false);
+    assert.equal(await narrow.locator("#install").isVisible(), false);
     assert.equal(await narrow.locator(".dev-badge").isVisible(), true);
     assert.equal(await narrow.locator("#version").isVisible(), true);
     assert.equal(await narrow.evaluate(async () => (await navigator.serviceWorker.getRegistrations()).length), 0);
+    await verifyActionLayout(narrow);
+    await verifyHelpAndNews(narrow);
+    await verifyPreview(narrow);
     assert.deepEqual(workerRequests, []);
     await dev.close();
 
@@ -117,6 +181,12 @@ async function verify(channel) {
     const productionTab = await shared.newPage();
     await productionTab.goto(home);
     await productionTab.waitForFunction(() => navigator.serviceWorker.controller?.scriptURL.endsWith("/sw.js"));
+    assert.equal(await productionTab.locator("#pwa-preview, #ssb-dev-refresh").count(), 0);
+    await verifyActionLayout(productionTab);
+    await verifyHelpAndNews(productionTab);
+    assert.equal(await productionTab.locator("#update").textContent(), "Проверить обновления");
+    await productionTab.locator("#update").click();
+    await productionTab.locator("#pwa-notice").getByText(/Новая версия не найдена/).waitFor();
     await save(productionTab, "PROD", "Рабочее предложение");
     const testTab = await shared.newPage();
     await testTab.goto(home + "test/");
@@ -132,7 +202,7 @@ async function verify(channel) {
       (await navigator.serviceWorker.getRegistrations()).map(({ scope }) => scope)), [home]);
     assert.equal(await testTab.evaluate(async () => (await caches.keys()).length), 1);
     await shared.close();
-    console.log(channel + ": dev interface, isolated storage and coexistence with the production worker at a separate path on the same origin — OK");
+    console.log(channel + ": responsive actions, safe preview, real update check and isolated storage — OK");
   } finally {
     await browser.close();
   }

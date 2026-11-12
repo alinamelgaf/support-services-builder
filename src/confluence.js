@@ -6,7 +6,7 @@ import { OPTIONS } from "./proposal.js";
 import { hasRichText, plainText, readRich } from "./rich-text.js";
 
 export const SOURCE_TYPES = [
-  ["catalog", "Каталог услуг"], ["defaults", "Базовая конфигурация"], ["intros", "Вводные тексты предложений"],
+  ["catalog", "Каталог услуг"], ["defaults", "Базовая конфигурация"], ["intros", "Вводные тексты"],
   ["sla", "SLA и уровни критичности"], ["raci", "Матрица RACI"],
   ["assumptions", "Допущения и ограничения"], ["glossary", "Глоссарий"],
 ];

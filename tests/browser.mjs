@@ -106,7 +106,7 @@ async function checkStandalone(browser) {
   try {
     await page.goto(localFile);
     await checkAppIcon(page);
-    assert.equal(await page.locator("#pwa-actions").isVisible(), false);
+    assert.equal(await page.locator("#update").isVisible(), false);
     await configure(page);
     const data = fixture();
     await upload(page, paginate(data, 0, 4));
