@@ -11,21 +11,30 @@ import JSZip from "jszip";
 import { fixture, IDS, paginate, SOURCES } from "./fixtures.mjs";
 
 const version = JSON.parse(await readFile("package.json", "utf8")).version;
-const scope = "/support-services-builder/";
+const baseline = process.env.SSB_UPGRADE_FROM_DIST;
+const scope = baseline ? "/" : "/support-services-builder/";
 const types = {
   "index.html": "text/html; charset=utf-8", "app.js": "text/javascript", "app.css": "text/css",
   "sw.js": "text/javascript", "manifest.webmanifest": "application/manifest+json", "icon-192.png": "image/png", "icon-512.png": "image/png",
   "user-guide.html": "text/html; charset=utf-8",
 };
-const assets = Object.fromEntries(await Promise.all(Object.keys(types).map(async (name) => [name, await readFile(`dist/${name}`)])));
-const updatedVersion = "99.0.0";
+const readAssets = async (directory) => Object.fromEntries(await Promise.all(
+  Object.keys(types).map(async (name) => [name, await readFile(join(directory, name))]),
+));
+const assets = await readAssets("dist");
+const initialAssets = baseline ? await readAssets(baseline) : assets;
+const initialVersion = /id="version">Версия (\d+\.\d+\.\d+)</.exec(initialAssets["index.html"].toString())?.[1];
+assert.ok(initialVersion);
+if (baseline) assert.notEqual(initialVersion, version);
+const updatedVersion = baseline ? version : "99.0.0";
 const nextIndex = Buffer.from(assets["index.html"].toString()
   .replace(`Версия ${version}`, `Версия ${updatedVersion}`)
   .replace(`<h2>${version} —`, `<h2>${updatedVersion} —`));
 const digest = (buffer) => "sha256-" + createHash("sha256").update(buffer).digest("base64");
-const nextWorker = assets["sw.js"].toString().replace(`VERSION = "${version}-`, `VERSION = "${updatedVersion}-`).replace(digest(assets["index.html"]), digest(nextIndex));
+const nextWorker = baseline ? assets["sw.js"].toString() : assets["sw.js"].toString()
+  .replace(`VERSION = "${version}-`, `VERSION = "${updatedVersion}-`).replace(digest(assets["index.html"]), digest(nextIndex));
 const brokenWorker = nextWorker + "\n// Test response with an inconsistent asset.\n";
-assert.notEqual(nextWorker, assets["sw.js"].toString());
+assert.notEqual(nextWorker, initialAssets["sw.js"].toString());
 
 const tlsFolder = process.env.SSB_TEST_TLS_DIR;
 const tls = tlsFolder && { key: await readFile(join(tlsFolder, "key.pem")), cert: await readFile(join(tlsFolder, "cert.pem")) };
@@ -37,8 +46,10 @@ const handler = (request, response) => {
   const file = pathname === scope ? "index.html" : pathname.startsWith(scope) ? pathname.slice(scope.length) : "";
   if (request.method !== "GET" || !Object.hasOwn(assets, file)) { response.writeHead(404).end(); return; }
   response.writeHead(200, { "Content-Type": types[file], "Cache-Control": "no-store" });
-  const worker = served === "broken" ? brokenWorker : nextWorker;
-  response.end(served !== "initial" && file === "sw.js" ? worker : served === "updated" && file === "index.html" ? nextIndex : assets[file]);
+  if (served === "broken" && file === "sw.js") response.end(brokenWorker);
+  else if (served !== "updated") response.end(initialAssets[file]);
+  else if (baseline) response.end(assets[file]);
+  else response.end(file === "sw.js" ? nextWorker : file === "index.html" ? nextIndex : assets[file]);
 };
 const server = tls ? httpsServer(tls, handler) : httpServer(handler);
 await new Promise((done) => server.listen(0, "127.0.0.1", done));
@@ -164,6 +175,7 @@ async function checkHosted(channel) {
   page.on("pageerror", (error) => errors.push(error.message));
   const consoleErrors = [];
   page.on("console", (message) => { if (message.type() === "error") consoleErrors.push(message.text()); });
+  let installed = false;
   try {
     await page.goto(home);
     try { await page.waitForFunction(() => navigator.serviceWorker.controller !== null, null, { timeout: 10000 }); }
@@ -190,25 +202,18 @@ async function checkHosted(channel) {
     const { appId } = await session.send("Page.getAppId");
     assert.equal(appId, home);
     if (process.env.SSB_NATIVE_INSTALL === "1") {
-      let installed = false;
-      try {
-        await session.send("PWA.install", { manifestId: home });
-        installed = true;
-        await session.send("PWA.getOsAppState", { manifestId: home });
-        if (channel === "chrome") {
-          const [app] = await Promise.all([
-            context.waitForEvent("page", { timeout: 10000 }),
-            session.send("PWA.launch", { manifestId: home }),
-          ]);
-          await app.getByRole("heading", { name: /Конструктор услуг/ }).waitFor();
-          assert.equal(app.url(), home);
-          await app.close();
-        }
-      } finally {
-        if (installed) await session.send("PWA.uninstall", { manifestId: home });
+      await session.send("PWA.install", { manifestId: home });
+      installed = true;
+      await session.send("PWA.getOsAppState", { manifestId: home });
+      if (channel === "chrome") {
+        const [app] = await Promise.all([
+          context.waitForEvent("page", { timeout: 10000 }),
+          session.send("PWA.launch", { manifestId: home }),
+        ]);
+        await app.getByRole("heading", { name: /Конструктор услуг/ }).waitFor();
+        assert.equal(app.url(), home);
+        await app.close();
       }
-      await assert.rejects(session.send("PWA.getOsAppState", { manifestId: home }), /Unknown web-app manifest id|not installed/i);
-      console.log(`${channel}: PWA install${channel === "chrome" ? ", launch" : ""} and uninstall verified through the browser protocol`);
     }
     await configure(page);
     await upload(page, fixture());
@@ -229,8 +234,10 @@ async function checkHosted(channel) {
     await stale.getByText("Черновик восстановлен на этом устройстве.").waitFor();
     await standardParam(page).fill("Черновик перед обновлением");
     await selected(page, "Extended");
-    await page.locator("#include-intro").uncheck();
+    if (baseline) await page.locator("#intro-text").fill("Локальный вводный текст старой версии");
+    else await page.locator("#include-intro").uncheck();
     await page.locator("#client").fill("Учебный клиент");
+    await page.locator("#title").fill("Учебное предложение");
     await page.getByRole("checkbox", { name: "Включить в документ TS-1.A", exact: true }).uncheck();
     await page.getByText("Черновик сохранён на этом устройстве.").waitFor();
     await stale.locator("#client").fill("Учебная правка из другой вкладки");
@@ -242,7 +249,7 @@ async function checkHosted(channel) {
     await page.getByText(/Обновление не подготовлено/).waitFor();
     await page.waitForFunction(() => !document.querySelector("#update").disabled);
     assert.equal(await standardParam(page).inputValue(), "Черновик перед обновлением");
-    assert.equal(await page.locator("#version").textContent(), `Версия ${version}`);
+    assert.equal(await page.locator("#version").textContent(), `Версия ${initialVersion}`);
 
     await context.setOffline(true);
     served = "updated";
@@ -250,22 +257,36 @@ async function checkHosted(channel) {
     await page.getByRole("button", { name: "Установить обновление" }).waitFor();
     await dialog(page, "#update", /после сохранения черновика/, false);
     assert.equal(await standardParam(page).inputValue(), "Черновик перед обновлением");
-    assert.equal(await page.locator("#version").textContent(), `Версия ${version}`);
+    assert.equal(await page.locator("#version").textContent(), `Версия ${initialVersion}`);
     await dialog(page, "#update", /сохранённое предложение откроются/);
     await page.getByText(`Версия ${updatedVersion}`, { exact: true }).waitFor();
     await page.getByText("Черновик восстановлен на этом устройстве.").waitFor();
     assert.equal(await standardParam(page).inputValue(), "Черновик перед обновлением");
     assert.equal(await page.getByRole("radio", { name: /^Extended/ }).isChecked(), true);
-    assert.equal(await page.locator("#include-intro").isChecked(), false);
+    assert.equal(await page.locator("#include-intro").isChecked(), Boolean(baseline));
     assert.equal(await page.locator("#client").inputValue(), "Учебный клиент");
+    assert.equal(await page.locator("#title").inputValue(), "Учебное предложение");
     assert.equal(await page.getByRole("checkbox", { name: "Включить в документ TS-1.A", exact: true }).isChecked(), false);
     assert.match(await page.locator("#source-link").getAttribute("href"), /^https:\/\/wiki\.example\.invalid\//);
+    if (baseline) {
+      assert.equal(await page.locator("#intro-text").count(), 0);
+      const word = await exportFile(page, "word", "word/document.xml");
+      assert.match(word, /Пример Extended/);
+      assert.doesNotMatch(word, /Локальный вводный текст старой версии/);
+    }
     await page.getByRole("button", { name: "Что нового" }).click();
     await page.locator("#release-notes").getByRole("heading", { name: new RegExp(updatedVersion) }).waitFor();
     await page.locator("#close-release-notes").click();
     assert.deepEqual(errors, []);
     assert.ok(requests.length > 0);
     assert.ok(requests.every((request) => new URL(request.url()).origin === origin && request.method() === "GET" && !request.postData()));
+    if (installed) {
+      const updatedSession = await context.newCDPSession(page);
+      await updatedSession.send("PWA.getOsAppState", { manifestId: home });
+      await updatedSession.send("PWA.uninstall", { manifestId: home });
+      await assert.rejects(updatedSession.send("PWA.getOsAppState", { manifestId: home }), /Unknown web-app manifest id|not installed/i);
+      console.log(`${channel}: PWA install${channel === "chrome" ? ", launch" : ""}, update in place and uninstall verified`);
+    }
     await context.close();
     context = await launch();
     await context.setOffline(true);
@@ -292,7 +313,7 @@ try {
     try {
       await checkStandalone(browser);
       await checkHosted(channel);
-      console.log(`${channel} ${browser.version()} (${protocol}): standalone, installability, offline, update, persistence, request isolation — OK`);
+      console.log(`${channel} ${browser.version()} (${protocol}): standalone, installability, offline, update ${initialVersion} → ${updatedVersion}, persistence, request isolation — OK`);
     } finally { await browser.close(); }
   }
 } finally { await new Promise((done) => server.close(done)); }

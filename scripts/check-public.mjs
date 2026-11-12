@@ -69,6 +69,9 @@ if (process.argv.includes("--built")) {
     if (!html.includes("connect-src 'none'")) throw new Error(`Missing network restriction in ${folder}`);
     const app = folder === "dist" ? await readFile("dist/app.js", "utf8") : html;
     if (!app.includes("UUID byte range is out of buffer bounds")) throw new Error(`Missing bundled ExcelJS buffer check in ${folder}`);
+    if (/Имитация PWA|pwa-preview|ssb-dev-refresh|ssb-dev:|dev-badge/.test(html + app)) {
+      throw new Error(`Test-mode code found in production ${folder}`);
+    }
   }
 }
 console.log(`Public scan passed (${paths.length} tracked files${deny.length ? ", private denylist applied" : ""}).`);

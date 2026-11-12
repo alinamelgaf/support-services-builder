@@ -6,6 +6,7 @@ import { chromium } from "playwright";
 import { referenceFixture, REFERENCE_SOURCES, SUPPORT_NAMES } from "./fixtures.mjs";
 
 const home = process.env.SSB_DEV_URL ?? "http://127.0.0.1:4173/";
+const production = process.env.SSB_SECTIONS_PRODUCTION === "1";
 const output = process.env.SSB_SAMPLE_OUTPUT;
 const channels = (process.env.SSB_BROWSER_CHANNELS ?? "chromium").split(",");
 const keys = ["sla", "severity", "assumptions", "glossary"];
@@ -50,7 +51,7 @@ for (const [index, channel] of channels.entries()) {
     const page = await context.newPage();
     page.on("pageerror", (error) => errors.push(error.message));
     await page.goto(home);
-    assert.equal(await page.title(), "SSB — Тестовая версия");
+    assert.equal(await page.title(), production ? "Support Services Builder" : "SSB — Тестовая версия");
     await page.locator("#sources-panel summary").click();
     await page.locator("#source-base").fill(REFERENCE_SOURCES.base);
     await page.locator("#source-space").fill(REFERENCE_SOURCES.space);
@@ -141,8 +142,8 @@ for (const [index, channel] of channels.entries()) {
       await include(page, key).check();
     }
     await page.getByText("Черновик сохранён на этом устройстве.").waitFor();
-    await page.evaluate(() => new Promise((resolve, reject) => {
-      const open = indexedDB.open("ssb-dev:support-services-builder-drafts");
+    await page.evaluate((prefix) => new Promise((resolve, reject) => {
+      const open = indexedDB.open(prefix + "support-services-builder-drafts");
       open.onerror = () => reject(open.error);
       open.onsuccess = () => {
         const db = open.result;
@@ -158,7 +159,7 @@ for (const [index, channel] of channels.entries()) {
         tx.oncomplete = () => { db.close(); resolve(); };
         tx.onabort = () => { db.close(); reject(tx.error); };
       };
-    }));
+    }), production ? "" : "ssb-dev:");
     await page.reload();
     await page.getByText("Черновик восстановлен на этом устройстве.").waitFor();
     for (const key of keys) assert.equal(await include(page, key).isChecked(), true);
