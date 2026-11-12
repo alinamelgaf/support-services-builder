@@ -15,7 +15,7 @@
 }
 .dev-notice pre { white-space: pre-wrap; overflow-wrap: anywhere; }
 .dev-notice .button { margin-top: 7px; }
-.update-preview { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 7px; margin-top: 8px; font-size: 13px; }
+.update-preview { contain: inline-size; display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 7px; margin-top: 8px; font-size: 13px; }
 .update-preview select { max-width: 100%; padding: 4px 6px; font: inherit; color: var(--ink); }
 @media (max-width: 620px) {
   .topbar-inner { flex-wrap: wrap; row-gap: 7px; }

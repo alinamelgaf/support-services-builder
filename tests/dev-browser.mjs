@@ -59,10 +59,21 @@ async function restore(page, space, value) {
 async function verifyActionLayout(page) {
   const actions = page.locator("#pwa-actions");
   const controls = [actions.getByRole("link", { name: "Помощь" }), actions.locator("#show-release-notes"), actions.locator("#update")];
-  for (const width of [1280, 320]) {
+  for (const width of [1280, 950, 768, 320]) {
     await page.setViewportSize({ width, height: 900 });
     const row = await actions.boundingBox();
+    const intro = await page.locator(".intro").boundingBox();
+    const title = await page.locator(".intro h1").boundingBox();
+    const subtitle = await page.locator(".intro-copy p").boundingBox();
     const boxes = await Promise.all(controls.map((control) => control.boundingBox()));
+    assert.ok(Math.abs(intro.x + intro.width - row.x - row.width) < 1);
+    assert.ok(Math.abs(title.x - subtitle.x) < 1 && subtitle.y >= title.y + title.height);
+    assert.ok(title.x + title.width <= row.x + 1 || row.y >= subtitle.y + subtitle.height);
+    const notice = await page.locator("#pwa-notice").boundingBox();
+    if (!notice) {
+      const column = await page.locator(".intro-controls").boundingBox();
+      assert.ok(Math.abs(column.height - row.height) < 1);
+    }
     for (const [i, box] of boxes.entries()) {
       assert.ok(box && box.x >= row.x && box.x + box.width <= row.x + row.width + 1);
       for (const other of boxes.slice(0, i)) {
@@ -74,11 +85,10 @@ async function verifyActionLayout(page) {
     if (width === 1280) {
       assert.equal(help.y, news.y);
       assert.equal(news.y, update.y);
-      const intro = await page.locator(".intro").boundingBox();
-      const notice = await page.locator("#pwa-notice").boundingBox();
-      const bottom = notice ? notice.y + notice.height : row.y + row.height;
+      assert.ok(Math.abs(title.y - help.y) < 1);
+      const bottom = Math.max(subtitle.y + subtitle.height, notice ? notice.y + notice.height : row.y + row.height);
       assert.ok(intro.y + intro.height - bottom <= 17);
-    } else {
+    } else if (width === 320) {
       assert.ok(help.y < update.y);
     }
   }
@@ -102,6 +112,10 @@ async function verifyNoticeLayout(page) {
     assert.ok(box && box.x >= row.x - 1);
     assert.ok(Math.abs(box.x + box.width - row.x - row.width) < 1);
     assert.ok(Math.abs(box.y - row.y - row.height - 13) < 1);
+    if (width === 1280) {
+      const title = await page.locator(".intro h1").boundingBox();
+      assert.ok(Math.abs(title.y - row.y) < 1);
+    }
     assert.ok(await notice.evaluate((node) => getComputedStyle(node).textAlign === "right"
       && node.scrollWidth <= node.clientWidth + 1));
   }

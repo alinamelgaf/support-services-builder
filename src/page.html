@@ -20,15 +20,21 @@
 
   <main class="shell"><!-- DEV_NOTICE -->
     <div class="intro">
-      <h1>Конструктор услуг технического сопровождения</h1>
-      <p>Сравните три варианта поддержки и сформируйте предложение клиенту.</p>
-      <div class="actions pwa-actions" id="pwa-actions">
-        <button class="button" type="button" id="install" hidden>Установить приложение</button>
-        <a class="button" href="./user-guide.html" target="_blank" rel="noopener noreferrer">Помощь</a>
-        <button class="button" type="button" id="show-release-notes">Что нового</button>
-        <button class="button" type="button" id="update" hidden>Проверить обновления</button>
+      <div class="panel-heading intro-heading">
+        <div class="intro-copy">
+          <h1>Конструктор услуг технического сопровождения</h1>
+          <p>Сравните три варианта поддержки и сформируйте предложение клиенту.</p>
+        </div>
+        <div class="intro-controls">
+          <div class="actions pwa-actions" id="pwa-actions">
+            <button class="button" type="button" id="install" hidden>Установить приложение</button>
+            <a class="button" href="./user-guide.html" target="_blank" rel="noopener noreferrer">Помощь</a>
+            <button class="button" type="button" id="show-release-notes">Что нового</button>
+            <button class="button" type="button" id="update" hidden>Проверить обновления</button>
+          </div>
+          <p class="notice" id="pwa-notice" role="status" hidden></p><!-- UPDATE_PREVIEW -->
+        </div>
       </div>
-      <p class="notice" id="pwa-notice" role="status" hidden></p><!-- UPDATE_PREVIEW -->
     </div>
 
     <section class="panel catalog-panel" aria-labelledby="catalog-heading">
