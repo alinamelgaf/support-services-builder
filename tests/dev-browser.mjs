@@ -93,6 +93,20 @@ async function verifyHelpAndNews(page) {
   await page.locator("#close-release-notes").click();
 }
 
+async function verifyNoticeLayout(page) {
+  const notice = page.locator("#pwa-notice");
+  for (const width of [1280, 320]) {
+    await page.setViewportSize({ width, height: 900 });
+    const row = await page.locator("#pwa-actions").boundingBox();
+    const box = await notice.boundingBox();
+    assert.ok(box && box.x >= row.x - 1);
+    assert.ok(Math.abs(box.x + box.width - row.x - row.width) < 1);
+    assert.ok(Math.abs(box.y - row.y - row.height - 13) < 1);
+    assert.ok(await notice.evaluate((node) => getComputedStyle(node).textAlign === "right"
+      && node.scrollWidth <= node.clientWidth + 1));
+  }
+}
+
 async function verifyPreview(page) {
   const result = page.locator("#pwa-preview-result");
   const update = page.locator("#update");
@@ -114,6 +128,7 @@ async function verifyPreview(page) {
   await update.click();
   await notice.getByText(/Имитация PWA\. Не удалось проверить обновления/).waitFor();
   assert.equal(await update.textContent(), "Проверить обновления");
+  await verifyNoticeLayout(page);
 }
 
 async function verify(channel) {
@@ -187,6 +202,7 @@ async function verify(channel) {
     assert.equal(await productionTab.locator("#update").textContent(), "Проверить обновления");
     await productionTab.locator("#update").click();
     await productionTab.locator("#pwa-notice").getByText(/Новая версия не найдена/).waitFor();
+    await verifyNoticeLayout(productionTab);
     await save(productionTab, "PROD", "Рабочее предложение");
     const testTab = await shared.newPage();
     await testTab.goto(home + "test/");

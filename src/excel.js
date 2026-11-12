@@ -26,6 +26,12 @@ function header(cell, value, background = NAVY) {
   cell.alignment = { horizontal: "center", vertical: "middle", wrapText: true };
 }
 
+function markProposalColumn(sheet, headerRow, selected, heading) {
+  sheet.getRow(headerRow - 1).height = 23;
+  header(sheet.getCell(headerRow - 1, selected + 1), "Предложение", TEAL);
+  header(sheet.getCell(headerRow, selected + 1), heading, TEAL);
+}
+
 function layout(workbook, name, title, widths, headers, headerRow, {
   comparison = false, freezeRows = true, freezeColumns = !comparison,
 } = {}) {
@@ -145,13 +151,13 @@ function rowsHeight(sheet, start, end) {
 // A4 landscape with the margins in layout().
 const SLA_PRINT_HEIGHT = 520;
 
-function paginateSla(sheet, groupStarts, height) {
+function paginateSla(sheet, groupStarts, height, repeatedHeight) {
   groupStarts.forEach((start, index) => {
     const end = groupStarts[index + 1] ?? sheet.rowCount + 1;
     const groupHeight = rowsHeight(sheet, start, end);
     if (index && height + groupHeight > SLA_PRINT_HEIGHT) {
       sheet.getRow(start - 1).addPageBreak(1, 16384);
-      height = sheet.pageSetup.printTitlesRow ? sheet.getRow(2).height : 0;
+      height = repeatedHeight;
     }
     height += groupHeight;
   });
@@ -162,8 +168,9 @@ function addSlaSheet(workbook, tables) {
   const separate = tables.length > 1;
   const packageTables = Boolean(tables[0].caption);
   const widths = packageTables ? [39, 24, 24, 26, 23] : [24, 38, 23, 23, 23];
-  const sheet = layout(workbook, title, title, widths, tables[0].headers, packageTables ? 3 : 2, {
-    freezeColumns: false, freezeRows: !separate,
+  const headings = packageTables ? tables[0].headers : [...tables[0].headers.slice(0, 2), ...COMPARISON_HEADERS.slice(2)];
+  const sheet = layout(workbook, title, title, widths, headings, 3, {
+    comparison: !packageTables, freezeColumns: false, freezeRows: !separate,
   });
   sheet.pageSetup.fitToPage = false;
   if (separate) sheet.pageSetup.printTitlesRow = undefined;
@@ -175,15 +182,16 @@ function addSlaSheet(workbook, tables) {
   let pageHeight = sheet.getRow(1).height;
   for (const [index, { headers, groups, selectedColumn = -1, caption, highlighted }] of tables.entries()) {
     const captionRow = index ? sheet.rowCount + 2 : 2;
-    const headerRow = caption ? captionRow + 1 : 2;
+    const headerRow = caption ? captionRow + 1 : 3;
     if (caption) {
       sheet.mergeCells(`A${captionRow}:E${captionRow}`);
       header(sheet.getCell(captionRow, 1), caption, highlighted ? TEAL : NAVY);
       sheet.getRow(captionRow).height = 36;
+      headers.forEach((label, col) => header(sheet.getCell(headerRow, col + 1), label, highlighted ? TEAL : NAVY));
+      sheet.getRow(headerRow).height = 32;
+    } else {
+      markProposalColumn(sheet, headerRow, selectedColumn, headings[selectedColumn]);
     }
-    headers.forEach((label, col) => header(sheet.getCell(headerRow, col + 1), label,
-      highlighted || col === selectedColumn ? TEAL : NAVY));
-    sheet.getRow(headerRow).height = packageTables ? 32 : 58;
     const groupSize = packageTables ? 1 : groups[0].length;
     const rows = groups.flat().map((cells) => cells.map(runs));
     const firstRows = writeRows(sheet, rows, widths, headerRow + 1, { selected: selectedColumn, groupSize, highlighted });
@@ -197,7 +205,8 @@ function addSlaSheet(workbook, tables) {
         pageHeight += gap + height;
       }
     } else {
-      paginateSla(sheet, groups.map((_, index) => firstRows[index * groupSize]), pageHeight + sheet.getRow(2).height);
+      const repeatedHeight = rowsHeight(sheet, 2, headerRow + 1);
+      paginateSla(sheet, groups.map((_, index) => firstRows[index * groupSize]), pageHeight + repeatedHeight, repeatedHeight);
     }
   }
 }
@@ -276,10 +285,8 @@ export async function generateExcel(proposal) {
     cell.alignment = { vertical: "middle", wrapText: true };
     comparison.getRow(row).height = Math.max(23, 8 + 15 * lines);
   });
-  comparison.getRow(headerRow - 1).height = 23;
   const selected = 2 + proposal.selectedIndex;
-  header(comparison.getCell(headerRow - 1, selected + 1), "Предложение", TEAL);
-  header(comparison.getCell(headerRow, selected + 1), COMPARISON_HEADERS[selected], TEAL);
+  markProposalColumn(comparison, headerRow, selected, COMPARISON_HEADERS[selected]);
   const matrix = proposal.rows.map(({ id, name, values }) => [runs(id), runs(name), ...values.map(runs)]);
   const matrixRows = writeRows(comparison, matrix, MATRIX_WIDTHS, headerRow + 1, { selected });
   const locations = matrixRows.flatMap((row, index) => ["A", "B"].map((column) => {

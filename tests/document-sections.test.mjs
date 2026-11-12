@@ -139,21 +139,22 @@ test("exports optional Word sections and Excel sheets in order with selected SLA
     const proposalHeader = proposalSheet.getColumn(1).values.indexOf("ID услуги");
     assert.deepEqual(proposalSheet.getRow(proposalHeader).values.slice(3), packages.map((code) => code + "\n" + SUPPORT_NAMES[code]));
     const sheet = workbook.getWorksheet("Матрица SLA");
-    const headerRow = slaMode === "all" ? 2 : 3;
-    assert.equal(sheet.rowCount, slaMode === "all" ? 22 : 8);
+    const headerRow = 3;
+    assert.equal(sheet.rowCount, slaMode === "all" ? 23 : 8);
     assert.equal(sheet.columnCount, 5);
     assert.ok((await xlsx.file("xl/workbook.xml").async("string")).includes(`&apos;Матрица SLA&apos;!$A$1:$E$${sheet.rowCount}`));
-    assert.deepEqual(sheet.getRow(headerRow).values.slice(1), data.sections.sla[0].headers);
     if (slaMode === "all") {
-      assert.equal(sheet.getCell("A18").value, "80 — Вопрос");
-      assert.equal(sheet.getCell("D2").value, "Extended ✓\n" + SUPPORT_NAMES.Extended);
-      assert.equal(sheet.getCell("D3").value, "20 минут");
-      assert.equal(sheet.getCell("D22").fill.fgColor.argb, "FFE5F3EE");
-      assert.equal(sheet.getCell("C4").value, "Не применимо");
-      assert.equal(sheet.getCell("C7").value, "Не регламентируется");
+      assert.deepEqual(sheet.getRow(headerRow).values.slice(3), proposalSheet.getRow(proposalHeader).values.slice(3));
+      assert.equal(sheet.getCell("A19").value, "80 — Вопрос");
+      assert.equal(sheet.getCell("D2").value, "Предложение");
+      assert.equal(sheet.getCell("D4").value, "20 минут");
+      assert.equal(sheet.getCell("D23").fill.fgColor.argb, "FFE5F3EE");
+      assert.equal(sheet.getCell("C5").value, "Не применимо");
+      assert.equal(sheet.getCell("C8").value, "Не регламентируется");
       const breaks = [...(await xlsx.file("xl/worksheets/sheet3.xml").async("string")).matchAll(/<brk id="(\d+)"/g)];
-      assert.ok(breaks.length && breaks.every(([, row]) => (Number(row) - 2) % 5 === 0));
+      assert.ok(breaks.length && breaks.every(([, row]) => (Number(row) - headerRow) % 5 === 0));
     } else {
+      assert.deepEqual(sheet.getRow(headerRow).values.slice(1), data.sections.sla[0].headers);
       assert.equal(sheet.getCell("A2").value, "Extended\n" + SUPPORT_NAMES.Extended);
       assert.equal(sheet.getCell("B4").value, "20 минут");
     }
@@ -210,6 +211,30 @@ test("exports optional Word sections and Excel sheets in order with selected SLA
     assert.match(cells[0], />11<\/w:t>/);
     assert.doesNotMatch(cells[2], /<w:t[ >]/);
     assert.match(cells[3], /Учебное определение 11/);
+  }
+});
+
+test("uses the proposal marker, header and column colors for each selected package in the comparative SLA sheet", async () => {
+  const result = read();
+  for (const [index, selected] of packages.entries()) {
+    const model = proposal(result, selected, { included, slaMode: "all" });
+    const workbook = new ExcelJS.Workbook();
+    await workbook.xlsx.load(await generateExcel(model));
+    const proposalSheet = workbook.getWorksheet("Предложение");
+    const proposalHeader = proposalSheet.getColumn(1).values.indexOf("ID услуги");
+    const sla = workbook.getWorksheet("Матрица SLA");
+    for (const [offset, code] of packages.entries()) {
+      const column = offset + 3;
+      const marker = sla.getCell(2, column);
+      const proposalMarker = proposalSheet.getCell(proposalHeader - 1, column);
+      assert.equal(marker.value, offset === index ? "Предложение" : null);
+      assert.deepEqual(marker.style, proposalMarker.style);
+      assert.equal(sla.getCell(3, column).value, code + "\n" + SUPPORT_NAMES[code]);
+      assert.deepEqual(sla.getCell(3, column).style, proposalSheet.getCell(proposalHeader, column).style);
+      for (let row = 4; row <= sla.rowCount; row += 1) {
+        assert.equal(sla.getCell(row, column).fill.fgColor.argb === "FFE5F3EE", offset === index);
+      }
+    }
   }
 });
 

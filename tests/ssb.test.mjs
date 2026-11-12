@@ -153,7 +153,14 @@ test("generates the same ordered selection in Excel and Word with rich intros an
   const document = await word.file("word/document.xml").async("string");
   const relations = await word.file("word/_rels/document.xml.rels").async("string");
   assert.ok(document.indexOf("Пример Extended") < document.indexOf("<w:tbl>"));
-  assert.match(document, /<w:pStyle w:val="Heading2"\/>.*?<w:jc w:val="center"\/>.*?Пример TS-1/);
+  const serviceHeadings = [...document.matchAll(/<w:p>.*?<\/w:p>/g)].map(([paragraph]) => paragraph)
+    .filter((paragraph) => paragraph.includes('<w:pStyle w:val="Heading2"/>'));
+  assert.equal(serviceHeadings.length, proposal.rows.length);
+  for (const [index, heading] of serviceHeadings.entries()) {
+    assert.match(heading, /<w:keepNext\/>/);
+    assert.match(heading, /<w:jc w:val="left"\/>/);
+    assert.ok(heading.includes(proposal.rows[index].name));
+  }
   assert.doesNotMatch(document, /TS-2/);
   assert.ok(relations.includes(PUBLIC_LINK));
   assert.doesNotMatch(relations, /wiki\.example\.invalid/);

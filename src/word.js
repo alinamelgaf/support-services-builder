@@ -121,7 +121,7 @@ function serviceSections(rows, numbering) {
   const sections = [];
   for (const { name, description, conditions } of rows) {
     sections.push(new Paragraph({
-      text: name, heading: HeadingLevel.HEADING_2, alignment: AlignmentType.CENTER, keepNext: true,
+      text: name, heading: HeadingLevel.HEADING_2, alignment: AlignmentType.LEFT, keepNext: true,
     }));
     const label = new TextRun({ text: `${CONDITIONS_TITLE}: `, bold: true });
     const body = [
