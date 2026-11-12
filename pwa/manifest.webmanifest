@@ -3,6 +3,7 @@
   "short_name": "SSB",
   "description": "Конструктор услуг технического сопровождения",
   "lang": "ru",
+  "id": "/",
   "start_url": "./",
   "scope": "./",
   "display": "standalone",

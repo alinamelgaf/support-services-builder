@@ -12,7 +12,7 @@ import { fixture, IDS, paginate, SOURCES } from "./fixtures.mjs";
 
 const version = JSON.parse(await readFile("package.json", "utf8")).version;
 const baseline = process.env.SSB_UPGRADE_FROM_DIST;
-const scope = baseline ? "/" : "/support-services-builder/";
+const headful = process.env.SSB_HEADFUL === "1";
 const types = {
   "index.html": "text/html; charset=utf-8", "app.js": "text/javascript", "app.css": "text/css",
   "sw.js": "text/javascript", "manifest.webmanifest": "application/manifest+json", "icon-192.png": "image/png", "icon-512.png": "image/png",
@@ -43,7 +43,7 @@ const protocol = tls ? "https" : "http";
 let served = "initial";
 const handler = (request, response) => {
   const pathname = new URL(request.url, "http://127.0.0.1").pathname;
-  const file = pathname === scope ? "index.html" : pathname.startsWith(scope) ? pathname.slice(scope.length) : "";
+  const file = pathname === "/" ? "index.html" : pathname.slice(1);
   if (request.method !== "GET" || !Object.hasOwn(assets, file)) { response.writeHead(404).end(); return; }
   response.writeHead(200, { "Content-Type": types[file], "Cache-Control": "no-store" });
   if (served === "broken" && file === "sw.js") response.end(brokenWorker);
@@ -54,7 +54,7 @@ const handler = (request, response) => {
 const server = tls ? httpsServer(tls, handler) : httpServer(handler);
 await new Promise((done) => server.listen(0, "127.0.0.1", done));
 const origin = `${protocol}://127.0.0.1:${server.address().port}`;
-const home = origin + scope;
+const home = origin + "/";
 const localFile = pathToFileURL(resolve("standalone/index.html")).href;
 
 async function checkAppIcon(page) {
@@ -90,6 +90,27 @@ async function upload(page, ...pages) {
 const sorted = (page) => page.locator("#services .service-id").allTextContents();
 const standardParam = (page) => page.getByRole("textbox", { name: "Параметр TS-1 в Standard", exact: true });
 const selected = (page, code) => page.getByRole("radio", { name: new RegExp(`^${code}`) }).check();
+
+async function checkManifest(session) {
+  const { url, manifest } = await session.send("Page.getAppManifest");
+  assert.equal(url, home + "manifest.webmanifest");
+  assert.match(manifest.display, /^(?:kStandalone|standalone)$/);
+  assert.equal(manifest.startUrl, home);
+  assert.equal(manifest.scope, home);
+  const { appId } = await session.send("Page.getAppId");
+  assert.equal(appId, home);
+}
+
+async function openPwaWindow(context, session, expectedVersion) {
+  const [app] = await Promise.all([
+    context.waitForEvent("page", { timeout: 10000 }),
+    session.send("PWA.launch", { manifestId: home }),
+  ]);
+  await app.getByText(`Версия ${expectedVersion}`, { exact: true }).waitFor();
+  assert.equal(app.url(), home);
+  assert.ok(await app.evaluate(() => matchMedia("(display-mode: standalone)").matches));
+  return app;
+}
 
 async function dialog(page, button, expected, accept = true) {
   const decision = page.waitForEvent("dialog").then(async (prompt) => {
@@ -165,14 +186,15 @@ async function checkHosted(channel) {
   await mkdir(folder, { recursive: true });
   const base = await realpath(folder);
   const profile = await mkdtemp(join(base, "pwa-"));
-  const launch = () => chromium.launchPersistentContext(profile, { channel, headless: true,
+  const launch = () => chromium.launchPersistentContext(profile, { channel, headless: !headful,
     args: pin ? ["--ignore-certificate-errors-spki-list=" + pin] : [] });
+  const canLaunch = channel === "chrome" || (channel === "msedge" && headful);
   let context = await launch();
   const requests = [];
   const errors = [];
   context.on("request", (request) => { if (/^https?:/.test(request.url())) requests.push(request); });
-  const page = context.pages()[0] ?? await context.newPage();
-  page.on("pageerror", (error) => errors.push(error.message));
+  context.on("weberror", (error) => errors.push(error.error().message));
+  let page = context.pages()[0] ?? await context.newPage();
   const consoleErrors = [];
   page.on("console", (message) => { if (message.type() === "error") consoleErrors.push(message.text()); });
   let installed = false;
@@ -194,25 +216,19 @@ async function checkHosted(channel) {
       throw new Error(JSON.stringify({ notice, registrations, cacheError, consoleErrors, errors, requests: requests.map((request) => request.url()) }), { cause: error });
     }
     const session = await context.newCDPSession(page);
-    const { manifest } = await session.send("Page.getAppManifest");
-    assert.match(manifest.display, /^(?:kStandalone|standalone)$/);
-    assert.equal(manifest.startUrl, home);
+    await checkManifest(session);
     const { installabilityErrors } = await session.send("Page.getInstallabilityErrors");
     assert.deepEqual(installabilityErrors, []);
-    const { appId } = await session.send("Page.getAppId");
-    assert.equal(appId, home);
     if (process.env.SSB_NATIVE_INSTALL === "1") {
       await session.send("PWA.install", { manifestId: home });
       installed = true;
       await session.send("PWA.getOsAppState", { manifestId: home });
-      if (channel === "chrome") {
-        const [app] = await Promise.all([
-          context.waitForEvent("page", { timeout: 10000 }),
-          session.send("PWA.launch", { manifestId: home }),
-        ]);
-        await app.getByRole("heading", { name: /Конструктор услуг/ }).waitFor();
-        assert.equal(app.url(), home);
-        await app.close();
+      if (canLaunch) {
+        // DevTools installation does not use the browser's normal installation dialog.
+        await session.send("PWA.changeAppUserSettings", { manifestId: home, displayMode: "standalone" });
+        const app = await openPwaWindow(context, session, initialVersion);
+        await page.close();
+        page = app;
       }
     }
     await configure(page);
@@ -234,7 +250,8 @@ async function checkHosted(channel) {
     await stale.getByText("Черновик восстановлен на этом устройстве.").waitFor();
     await standardParam(page).fill("Черновик перед обновлением");
     await selected(page, "Extended");
-    if (baseline) await page.locator("#intro-text").fill("Локальный вводный текст старой версии");
+    const legacyIntroEditor = await page.locator("#intro-text").count() === 1;
+    if (legacyIntroEditor) await page.locator("#intro-text").fill("Локальный вводный текст старой версии");
     else await page.locator("#include-intro").uncheck();
     await page.locator("#client").fill("Учебный клиент");
     await page.locator("#title").fill("Учебное предложение");
@@ -263,12 +280,12 @@ async function checkHosted(channel) {
     await page.getByText("Черновик восстановлен на этом устройстве.").waitFor();
     assert.equal(await standardParam(page).inputValue(), "Черновик перед обновлением");
     assert.equal(await page.getByRole("radio", { name: /^Extended/ }).isChecked(), true);
-    assert.equal(await page.locator("#include-intro").isChecked(), Boolean(baseline));
+    assert.equal(await page.locator("#include-intro").isChecked(), legacyIntroEditor);
     assert.equal(await page.locator("#client").inputValue(), "Учебный клиент");
     assert.equal(await page.locator("#title").inputValue(), "Учебное предложение");
     assert.equal(await page.getByRole("checkbox", { name: "Включить в документ TS-1.A", exact: true }).isChecked(), false);
     assert.match(await page.locator("#source-link").getAttribute("href"), /^https:\/\/wiki\.example\.invalid\//);
-    if (baseline) {
+    if (legacyIntroEditor) {
       assert.equal(await page.locator("#intro-text").count(), 0);
       const word = await exportFile(page, "word", "word/document.xml");
       assert.match(word, /Пример Extended/);
@@ -280,18 +297,18 @@ async function checkHosted(channel) {
     assert.deepEqual(errors, []);
     assert.ok(requests.length > 0);
     assert.ok(requests.every((request) => new URL(request.url()).origin === origin && request.method() === "GET" && !request.postData()));
-    if (installed) {
-      const updatedSession = await context.newCDPSession(page);
-      await updatedSession.send("PWA.getOsAppState", { manifestId: home });
-      await updatedSession.send("PWA.uninstall", { manifestId: home });
-      await assert.rejects(updatedSession.send("PWA.getOsAppState", { manifestId: home }), /Unknown web-app manifest id|not installed/i);
-      console.log(`${channel}: PWA install${channel === "chrome" ? ", launch" : ""}, update in place and uninstall verified`);
-    }
+    const updatedSession = await context.newCDPSession(page);
+    await checkManifest(updatedSession);
+    if (installed) await updatedSession.send("PWA.getOsAppState", { manifestId: home });
     await context.close();
     context = await launch();
     await context.setOffline(true);
-    const reopened = context.pages()[0] ?? await context.newPage();
-    await reopened.goto(home);
+    const tab = context.pages()[0] ?? await context.newPage();
+    const restartSession = await context.newCDPSession(tab);
+    if (installed) await restartSession.send("PWA.getOsAppState", { manifestId: home });
+    const reopened = installed && canLaunch ? await openPwaWindow(context, restartSession, updatedVersion) : tab;
+    if (reopened === tab) await reopened.goto(home);
+    await checkManifest(await context.newCDPSession(reopened));
     await checkAppIcon(reopened);
     assert.equal(await reopened.locator("#version").textContent(), `Версия ${updatedVersion}`);
     await reopened.getByText("Черновик восстановлен на этом устройстве.").waitFor();
@@ -300,8 +317,18 @@ async function checkHosted(channel) {
     await guide.getByRole("heading", { name: /Руководство пользователя/ }).waitFor();
     await dialog(reopened, "#reset", /Восстановить локальные настройки/);
     assert.equal(await standardParam(reopened).inputValue(), "9 часов в сохранённом профиле");
+    if (installed) console.log(`${channel}: PWA identity and installation survived the update and browser restart${canLaunch ? "; standalone relaunch verified" : ""}`);
   } finally {
-    await context.close();
+    try {
+      if (installed) {
+        await context.setOffline(false);
+        const cleanup = await context.newCDPSession(context.pages()[0] ?? await context.newPage());
+        await cleanup.send("PWA.uninstall", { manifestId: home });
+        await assert.rejects(cleanup.send("PWA.getOsAppState", { manifestId: home }), /Unknown web-app manifest id|not installed/i);
+      }
+    } finally {
+      await context.close();
+    }
     const target = await realpath(profile);
     if (target === profile && dirname(target) === base) await rm(target, { recursive: true, maxRetries: 3 });
   }
