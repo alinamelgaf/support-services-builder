@@ -286,7 +286,10 @@ async function importCatalog(files) {
     }
     const result = pending.data;
     const errors = renderIssues(result.issues);
-    if (!result.services.length) throw new Error("В выбранном файле нет корректных карточек услуг.");
+    if (!result.services.length) {
+      if (result.issues.length) $("#issues").open = true;
+      throw new Error("В выбранном файле нет корректных карточек услуг. Проверьте поля Page Properties и сообщения импорта.");
+    }
     const dirty = Boolean(hasDraftChanges());
     const initial = !state.services.length;
     const next = result.usableStandard || !state.hasStandard ? result.standard : state.standard;
@@ -306,12 +309,18 @@ async function importCatalog(files) {
       clearDraft();
     }
     const kind = result.legacy ? "прежний формат каталога" : "страницы REST объединены";
+    const recognized = [
+      ...(result.usableStandard ? ["Базовая конфигурация"] : []),
+      ...Object.entries(result.sections).filter(([, section]) => section.data).map(([key]) => SECTION_LABELS[key]),
+    ];
     const catalogMessage = errors
       ? "Есть ошибки импорта. Проверьте список ниже. Некорректные дополнительные разделы недоступны."
-      : !result.usableStandard ? "Эта загрузка не содержит полного стандарта. Проверьте источники перед использованием настроек Confluence." : "";
+      : !result.usableStandard ? "В этой выгрузке нет применимой базовой конфигурации. Проверьте содержимое JSON." : "";
     state.catalog = {
-      issues: result.issues, summary: `Услуг загружено ${state.services.length} из ${result.pages} карточек · ${kind}`,
-      message: catalogMessage, error: Boolean(errors || !result.usableStandard),
+      issues: result.issues,
+      summary: `Услуг загружено ${state.services.length} из ${result.pages} карточек · ${kind}` +
+        (recognized.length ? `. Распознано: ${recognized.join(", ")}.` : ""),
+      message: catalogMessage, error: Boolean(errors),
     };
     $("#catalog-summary").textContent = state.catalog.summary;
     notice("#catalog-notice", state.catalog.message, state.catalog.error);

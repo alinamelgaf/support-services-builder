@@ -1,6 +1,6 @@
 import { parseDocument } from "htmlparser2";
-import { ancestor, descendants, loadCatalog, XML_INVALID } from "./catalog.js";
-import { SECTION_LABELS, SEVERITY_CODES, SLA_CODES, SLA_METRICS } from "./document-sections.js";
+import { ancestor, descendants, hasServiceProperties, loadCatalog, XML_INVALID } from "./catalog.js";
+import { SECTION_LABELS, SEVERITY_CODES, SEVERITY_HEADERS, SLA_CODES, SLA_METRICS } from "./document-sections.js";
 import { initialDefaults } from "./package-defaults.js";
 import { OPTIONS } from "./proposal.js";
 import { hasRichText, plainText, readRich } from "./rich-text.js";
@@ -12,6 +12,7 @@ export const SOURCE_TYPES = [
 ];
 export const SOURCE_KEY = (typeof __SSB_STORAGE_PREFIX__ === "string" ? __SSB_STORAGE_PREFIX__ : "") + "ssb:confluence-sources:v1";
 const SUPPORTED = new Set(SOURCE_TYPES.map(([key]) => key).filter((key) => key !== "raci"));
+const sourceNames = new Map(SOURCE_TYPES);
 const record = (item) => Boolean(item && typeof item === "object" && !Array.isArray(item));
 const natural = (value) => Number.isSafeInteger(value) && value >= 0;
 
@@ -126,7 +127,7 @@ export function createImportBatch() {
         candidate.set(page.start, page);
       }
       const merged = collectPages([...candidate.values()]);
-      const data = merged.complete ? normalizeRest(merged.results, { ...sources, base: sources.base || merged.base }) : null;
+      const data = merged.complete ? normalizeRest(merged.results, { ...sources, base: merged.base || sources.base }) : null;
       pages = data ? new Map() : candidate;
       return { complete: merged.complete, count: merged.count, total: merged.total, data };
     },
@@ -142,31 +143,54 @@ function cellRich(cell, base) {
 const cellText = (cell) => plainText(cellRich(cell)).trim();
 const keyText = (text) => text.replace(/\s+/g, " ").replace(/:$/, "").trim().toLowerCase();
 const headerText = (cell) => keyText(cellText(cell));
+const namedColumns = (...labels) => labels.map((label) => [keyText(label)]);
+const packageCodes = OPTIONS.map(({ code }) => code);
+const headers = {
+  defaults: [["id услуги"], ["в документ", "включить в документ"], ...namedColumns(...packageCodes)],
+  intros: [["вариант", "вариант поддержки", "вариант предложения", "пакет", "тип поддержки", "уровень поддержки"], ["вводный текст", "текст", "текст предложения"]],
+  introColumns: namedColumns(...packageCodes),
+  sla: namedColumns("Код критичности", "Уровень поддержки", ...SLA_METRICS),
+  severity: namedColumns(...SEVERITY_HEADERS),
+  assumptions: namedColumns("Раздел", "Формулировка"),
+  glossary: namedColumns("Термин RU", "Term ENG", "Определение RU"),
+};
+headers.sla[4].push("время временного решения");
+headers.sla[5].push("время постоянного решения");
 
-function readTable(page, header, optional = false) {
-  if (typeof page.storage !== "string" || XML_INVALID.test(page.storage)) throw new Error("Нет корректного body.storage.value.");
-  const root = parseDocument(page.storage, { recognizeCDATA: true, recognizeSelfClosing: true });
-  const matches = [];
+function* tableRows(root) {
   for (const table of descendants(root)) {
     if (table.name !== "table" || ancestor(table, (node) => node.name === "table")) continue;
-    const rows = [...descendants(table)].filter((node) => node.name === "tr" && ancestor(node, (n) => n.name === "table") === table)
+    yield [...descendants(table)].filter((node) => node.name === "tr" && ancestor(node, (n) => n.name === "table") === table)
       .map((row) => row.children.filter((cell) => cell.name === "td" || cell.name === "th"));
-    const index = rows.findIndex((row) => header.every((name) => row.filter((cell) => name.includes(headerText(cell))).length === 1));
-    if (index < 0) continue;
-    const positions = header.map((names) => rows[index].findIndex((cell) => names.includes(headerText(cell))));
-    matches.push(rows.slice(index + 1).filter((row) => row.some(cellText)).map((row) => positions.map((position) => row[position])));
   }
+}
+
+function* matchingTables(page, header, exact = false) {
+  for (const { rows, names } of page.tables) {
+    const index = names.findIndex((row) => (!exact || row.filter(Boolean).length === header.length) &&
+      header.every((aliases) => row.some((name) => aliases.includes(name))));
+    if (index < 0) continue;
+    const positions = header.map((aliases) => names[index].flatMap((name, i) => aliases.includes(name) ? [i] : []));
+    yield { positions, rows: rows.slice(index + 1) };
+  }
+}
+
+function readTable(page, header, optional = false, exact = false) {
+  if (!page.tables) throw new Error("Нет корректного body.storage.value.");
+  const matches = [...matchingTables(page, header, exact)];
   if (!matches.length && optional) return null;
   if (matches.length !== 1) throw new Error(matches.length
     ? "Найдено несколько таблиц с одинаковыми ожидаемыми заголовками."
     : "Таблица отсутствует или содержит неверные заголовки.");
-  if (matches[0].some((row) => row.some((cell) => !cell))) throw new Error("В таблице есть строки с пропущенными ячейками.");
-  return matches[0];
+  const { positions, rows } = matches[0];
+  if (positions.some((indices) => indices.length !== 1)) throw new Error("В таблице повторяются ожидаемые заголовки.");
+  const cells = rows.filter((row) => row.some(cellText)).map((row) => positions.map(([position]) => row[position]));
+  if (cells.some((row) => row.some((cell) => !cell))) throw new Error("В таблице есть строки с пропущенными ячейками.");
+  return cells;
 }
 
 function readStandard(page, ids, standard, warn) {
-  const codes = OPTIONS.map(({ code }) => code);
-  const rows = readTable(page, [["id услуги"], ["в документ", "включить в документ"], ...codes.map((code) => [keyText(code)])]);
+  const rows = readTable(page, headers.defaults);
   const seen = new Set();
   const values = [];
   const included = [];
@@ -182,7 +206,7 @@ function readStandard(page, ids, standard, warn) {
       warn(`В базовой конфигурации есть ${id}, но карточка отсутствует.`);
       continue;
     }
-    values.push([ids.get(key), Object.fromEntries(codes.map((code, index) => [code, packages[index]]))]);
+    values.push([ids.get(key), Object.fromEntries(packageCodes.map((code, index) => [code, packages[index]]))]);
     included.push([ids.get(key), document === "+"]);
   }
   for (const [key, id] of ids) if (!seen.has(key)) warn(`Для ${id} нет строки базовой конфигурации. Услуга исключена из пакетов и включена в документ.`);
@@ -191,14 +215,13 @@ function readStandard(page, ids, standard, warn) {
 }
 
 function readIntros(page, base) {
-  const codes = OPTIONS.map(({ code }) => code);
-  const names = new Map(codes.map((code) => [keyText(code), code]));
+  const names = new Map(packageCodes.map((code) => [keyText(code), code]));
   const introduction = (cell) => cellRich(cell, base);
-  const rows = readTable(page, [["вариант", "вариант поддержки", "вариант предложения", "пакет", "тип поддержки", "уровень поддержки"], ["вводный текст", "текст", "текст предложения"]], true);
+  const rows = readTable(page, headers.intros, true);
   if (!rows) {
-    const columns = readTable(page, codes.map((code) => [keyText(code)]));
+    const columns = readTable(page, headers.introColumns, true, true) ?? readTable(page, headers.introColumns);
     if (columns.length !== 1) throw new Error("Под заголовками трёх вариантов нужна одна строка вводных текстов.");
-    return Object.fromEntries(codes.map((code, index) => [code, introduction(columns[0][index])]));
+    return Object.fromEntries(packageCodes.map((code, index) => [code, introduction(columns[0][index])]));
   }
   const values = new Map();
   for (const [variant, text] of rows) {
@@ -206,19 +229,14 @@ function readIntros(page, base) {
     if (!code || values.has(code)) throw new Error("В таблице вводных текстов найден неизвестный или повторный вариант.");
     values.set(code, introduction(text));
   }
-  if (values.size !== codes.length) throw new Error("В таблице нужны все три варианта поддержки.");
+  if (values.size !== packageCodes.length) throw new Error("В таблице нужны все три варианта поддержки.");
   return Object.fromEntries(values);
 }
 
-const namedColumns = (...labels) => labels.map((label) => [keyText(label)]);
-
 function readSla(page) {
-  const headers = namedColumns("Код критичности", "Уровень поддержки", ...SLA_METRICS);
-  headers[4].push("время временного решения");
-  headers[5].push("время постоянного решения");
   const codes = new Map(OPTIONS.map(({ code }) => [keyText(code), code]));
   const pairs = new Set();
-  const rows = readTable(page, headers).map(([codeCell, supportCell, ...metrics]) => {
+  const rows = readTable(page, headers.sla).map(([codeCell, supportCell, ...metrics]) => {
     const code = cellText(codeCell);
     const support = codes.get(headerText(supportCell));
     if (!SLA_CODES.includes(code)) throw new Error(`Код критичности «${code}» недопустим для базовой матрицы SLA.`);
@@ -239,7 +257,7 @@ function readSla(page) {
 
 function readSeverity(page, base) {
   const seen = new Set();
-  const rows = readTable(page, namedColumns("Код", "Наименование", "Краткое описание", "Полное описание"))
+  const rows = readTable(page, headers.severity)
     .map(([codeCell, nameCell, shortCell, fullCell]) => {
       const code = cellText(codeCell);
       if (!SEVERITY_CODES.includes(code)) throw new Error(`Неизвестный код критичности «${code}».`);
@@ -256,7 +274,7 @@ function readSeverity(page, base) {
 }
 
 function readAssumptions(page, base) {
-  const rows = readTable(page, namedColumns("Раздел", "Формулировка")).map(([section, text]) => {
+  const rows = readTable(page, headers.assumptions).map(([section, text]) => {
     const category = ["Допущения", "Ограничения"].find((name) => keyText(name) === headerText(section));
     const wording = cellRich(text, base);
     if (!category) throw new Error(`Неизвестный подраздел «${cellText(section)}».`);
@@ -268,7 +286,7 @@ function readAssumptions(page, base) {
 }
 
 function readGlossary(page, base) {
-  const rows = readTable(page, namedColumns("Термин RU", "Term ENG", "Определение RU")).map(([ru, eng, text]) => {
+  const rows = readTable(page, headers.glossary).map(([ru, eng, text]) => {
     const term = cellText(ru);
     const definition = cellRich(text, base);
     if (!term || !hasRichText(definition)) throw new Error("Нужны русский термин и его определение.");
@@ -278,8 +296,35 @@ function readGlossary(page, base) {
   return rows;
 }
 
+const hasHeaders = (page, header, exact) => !matchingTables(page, header, exact).next().done;
+
+function identifyPage(storage) {
+  if (typeof storage !== "string" || !storage.trim() || XML_INVALID.test(storage)) {
+    throw new Error("Отсутствует корректное body.storage.value. Нужна выгрузка с содержимым страниц.");
+  }
+  const root = parseDocument(storage, { recognizeCDATA: true, recognizeSelfClosing: true });
+  const tables = Array.from(tableRows(root), (rows) => ({ rows, names: rows.map((row) => row.map(headerText)) }));
+  const page = { tables };
+  const types = [];
+  if (hasServiceProperties(root)) types.push("catalog");
+  if (hasHeaders(page, headers.defaults)) types.push("defaults");
+  if (hasHeaders(page, headers.intros) || hasHeaders(page, headers.introColumns, true)) types.push("intros");
+  if (hasHeaders(page, headers.sla) || hasHeaders(page, headers.severity)) types.push("sla");
+  if (hasHeaders(page, headers.assumptions)) types.push("assumptions");
+  if (hasHeaders(page, headers.glossary)) types.push("glossary");
+  return { types, tables };
+}
+
+function labelHints(page, labels) {
+  const container = page.metadata?.labels;
+  const entries = container?.results ?? container;
+  const complete = Array.isArray(entries) && !container?._links?.next && !(container?.totalSize > entries.length);
+  const hints = complete ? [...new Set(entries.map((label) =>
+    labels.get(typeof label === "string" ? label : label?.name)).filter(Boolean))].sort() : [];
+  return { hints, complete };
+}
+
 function normalizeRest(results, sources) {
-  if (!sources.labels.catalog) throw new Error("Укажите локальные метки источников перед импортом REST.");
   const labels = new Map(SOURCE_TYPES.filter(([key]) => sources.labels[key]).map(([key]) => [sources.labels[key], key]));
   const sourcesByType = new Map([...SUPPORTED].map((key) => [key, []]));
   const byId = new Map();
@@ -289,43 +334,69 @@ function normalizeRest(results, sources) {
     const id = String(page?.id ?? "");
     const title = typeof page?.title === "string" ? page.title : "";
     if (!/^\d+$/.test(id)) throw new Error("В результатах REST отсутствует корректный ID страницы.");
-    const labelContainer = page.metadata?.labels;
-    const entries = labelContainer?.results ?? labelContainer;
-    if (!Array.isArray(entries) || labelContainer?._links?.next || labelContainer?.totalSize > entries.length) {
-      throw new Error("REST-ответ не содержит полного metadata.labels. Сохраните ответ запроса с нужным expand.");
-    }
-    const types = [...new Set(entries.map((label) => labels.get(typeof label === "string" ? label : label?.name)).filter(Boolean))];
-    if (types.length > 1) throw new Error("На одной странице обнаружены метки разных источников.");
-    const type = types[0];
     const storage = page.body?.storage?.value;
-    const data = { pageId: id, title, storage, type };
+    const data = { pageId: id, title, storage, ...labelHints(page, labels) };
     const previous = byId.get(id);
     if (previous) {
-      if (JSON.stringify(previous) !== JSON.stringify(data)) throw new Error("Один ID страницы присутствует с разным содержимым.");
+      if (previous.storage !== data.storage || previous.title !== data.title ||
+          (previous.complete && data.complete && previous.hints.join() !== data.hints.join())) {
+        throw new Error("Один ID страницы присутствует с разным содержимым.");
+      }
+      if (!previous.complete && data.complete) byId.set(id, data);
       issues.push({ level: "warning", page_id: id, title, message: "Повтор страницы пропущен. Если каталог менялся во время выгрузки, повторите её." });
       continue;
     }
     byId.set(id, data);
-    if (sourcesByType.has(type)) sourcesByType.get(type).push(data);
-    else if (type !== "raci") issues.push({ level: "warning", page_id: id, title, message: "Страница не относится к обрабатываемым источникам." });
+  }
+  for (const page of byId.values()) {
+    const issue = (level, message) => issues.push({ level, page_id: page.pageId, title: page.title, message });
+    let shape;
+    try {
+      shape = identifyPage(page.storage);
+    } catch (failure) {
+      if (page.hints.length === 1 && sourcesByType.has(page.hints[0])) {
+        sourcesByType.get(page.hints[0]).push(page);
+      } else if (page.hints[0] !== "raci" || page.hints.length > 1) {
+        issue("error", failure instanceof RangeError ? "Слишком глубокая вложенность разметки страницы." : failure.message);
+      }
+      continue;
+    }
+    const { types, tables } = shape;
+    const compatible = types.length ? types.filter((type) => page.hints.includes(type)) : page.hints;
+    if ((types.length > 1 && compatible.length !== 1) || (!types.length && compatible.length > 1)) {
+      const candidates = (types.length ? types : compatible).map((type) => sourceNames.get(type)).join(", ");
+      issue("error", `Тип источника неоднозначен. ${types.length ? "Найдены структуры" : "Найдены настроенные метки"}: ${candidates}.`);
+      continue;
+    }
+    const type = types.length === 1 ? types[0] : compatible[0];
+    if (types.length === 1 && page.hints.some((hint) => hint !== type)) {
+      issue("warning", `Настроенные метки не соответствуют содержимому. Распознан источник «${sourceNames.get(type)}».`);
+    }
+    if (sourcesByType.has(type)) sourcesByType.get(type).push(type === "catalog" ? page : { ...page, tables });
+    else if (type !== "raci") issue("warning", "Тип источника не распознан по полям Page Properties или заголовкам таблиц.");
   }
   const catalog = loadCatalog({ schemaVersion: 1, pages: sourcesByType.get("catalog") }, sources.base);
   const standard = initialDefaults();
   const ids = new Map(catalog.services.map(({ id }) => [id.toLowerCase(), id]));
-  function readSource(key, read, section) {
-    const pages = sourcesByType.get(key);
-    const name = SOURCE_TYPES.find(([type]) => type === key)[1];
+  function readSource(key, read, section, header) {
+    const candidates = sourcesByType.get(key);
+    const matching = header ? candidates.filter((page) => page.tables && hasHeaders(page, header)) : [];
+    const pages = matching.length ? matching : candidates;
+    const name = sourceNames.get(key);
+    const labeled = pages.filter(({ hints }) => hints.length === 1 && hints[0] === key);
+    const page = pages.length === 1 ? pages[0] : labeled.length === 1 && pages.every((item) => item.complete) ? labeled[0] : null;
     const issue = (level, message) => issues.push({
-      level, page_id: pages[0]?.pageId, title: pages[0]?.title, message: [name, section, message].filter(Boolean).join(". "),
+      level, page_id: page?.pageId, title: page?.title, message: [name, section, message].filter(Boolean).join(". "),
     });
-    if (pages.length !== 1) {
-      const error = pages.length ? "Найдено больше одной страницы источника."
-        : sources.labels[key] ? "Страница источника отсутствует в JSON." : "Метка источника не настроена.";
-      if (sources.labels[key] || key === "defaults") issue("warning", error);
+    if (!page) {
+      const error = pages.length
+        ? `Источник неоднозначен. Подходящие страницы: ${pages.map(({ pageId, title }) => title ? `${pageId} «${title}»` : pageId).join(", ")}. Оставьте в выгрузке нужную страницу или уточните источник меткой.`
+        : "Страница источника не найдена в JSON.";
+      if (pages.length || sources.labels[key] || key === "defaults") issue(pages.length ? "error" : "warning", error);
       return { error };
     }
     try {
-      return { data: read(pages[0], (message) => issue("warning", message)) };
+      return { data: read(page, (message) => issue("warning", message)) };
     } catch (failure) {
       issue("error", failure.message);
       return { error: failure.message };
@@ -334,8 +405,8 @@ function normalizeRest(results, sources) {
   const defaults = readSource("defaults", (page, warn) => readStandard(page, ids, standard, warn));
   const sections = {
     intro: readSource("intros", (page) => readIntros(page, sources.base)),
-    sla: readSource("sla", readSla, SECTION_LABELS.sla),
-    severity: readSource("sla", (page) => readSeverity(page, sources.base), SECTION_LABELS.severity),
+    sla: readSource("sla", readSla, SECTION_LABELS.sla, headers.sla),
+    severity: readSource("sla", (page) => readSeverity(page, sources.base), SECTION_LABELS.severity, headers.severity),
     assumptions: readSource("assumptions", (page) => readAssumptions(page, sources.base)),
     glossary: readSource("glossary", (page) => readGlossary(page, sources.base)),
   };

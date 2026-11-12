@@ -12,6 +12,7 @@ import { BASE, paginate, referenceFixture, REFERENCE_SOURCES, SUPPORT_NAMES } fr
 
 const sources = validateSources(REFERENCE_SOURCES);
 const read = (data = referenceFixture()) => createImportBatch().add([data], sources).data;
+const autoRead = (data) => createImportBatch().add([data], validateSources()).data;
 const packages = OPTIONS.map(({ code }) => code);
 const sectionNames = ["Матрица SLA", "Уровни критичности", "Допущения и ограничения", "Глоссарий"];
 const included = { sla: true, severity: true, assumptions: true, glossary: true, raci: true };
@@ -45,6 +46,74 @@ test("recognizes the two SLA tables without working hours in a complete paginate
   const cql = url.searchParams.get("cql");
   for (const key of ["sla", "assumptions", "glossary"]) assert.ok(cql.includes(sources.labels[key]));
   assert.ok(!cql.includes(sources.labels.raci));
+});
+
+test("recognizes every source structurally with no settings, including separately exported SLA tables", () => {
+  const data = referenceFixture();
+  data.results = data.results.map(({ metadata, ...page }) => page);
+  data.results[0] = { content: data.results[0] };
+  assert.deepEqual(autoRead(data), read(referenceFixture()));
+
+  const combined = data.results.find(({ id }) => id === "62");
+  const split = combined.body.storage.value.indexOf("</table>") + "</table>".length;
+  data.results.push({
+    id: "65", title: "Отдельный учебный справочник", body: { storage: { value: combined.body.storage.value.slice(split) } },
+  });
+  combined.body.storage.value = combined.body.storage.value.slice(0, split);
+  data.size += 1;
+  data.totalSize += 1;
+  assert.deepEqual(autoRead(data).sections, read(referenceFixture()).sections);
+});
+
+test("reports conflicting structures and duplicate pages without guessing; a matching label resolves ambiguity", () => {
+  const data = referenceFixture();
+  const glossary = data.results.at(-1);
+  const duplicate = { ...structuredClone(glossary), id: "65", title: "Другой учебный глоссарий", metadata: { labels: { results: [] } } };
+  data.results.push(duplicate);
+  data.size += 1;
+  data.totalSize += 1;
+
+  const ambiguous = autoRead(data);
+  assert.match(ambiguous.sections.glossary.error, /неоднозначен.*64.*65/);
+  assert.equal(ambiguous.sections.glossary.data, undefined);
+  assert.equal(ambiguous.sections.sla.data.length, 12);
+  assert.deepEqual(read(data).sections.glossary, read(referenceFixture()).sections.glossary);
+
+  delete duplicate.metadata;
+  assert.match(read(data).sections.glossary.error, /неоднозначен/);
+  data.results.pop();
+  data.size -= 1;
+  data.totalSize -= 1;
+  glossary.body.storage.value += data.results.at(-2).body.storage.value;
+  const mixed = autoRead(data);
+  assert.ok(mixed.issues.some(({ level, page_id, message }) => level === "error" && page_id === "64" &&
+    /неоднозначен.*Допущения и ограничения.*Глоссарий/.test(message)));
+  assert.equal(mixed.sections.glossary.data, undefined);
+  assert.deepEqual(read(data).sections.glossary, read(referenceFixture()).sections.glossary);
+
+  const stale = referenceFixture();
+  stale.results.at(-1).metadata.labels.results[0].name = sources.labels.assumptions;
+  const mismatched = createImportBatch().add([stale], validateSources({ ...sources, base: "https://older.example.invalid" })).data;
+  assert.equal(mismatched.base, BASE);
+  assert.ok(mismatched.issues.some(({ level, page_id, message }) => level === "warning" && page_id === "64" &&
+    /метки не соответствуют содержимому/.test(message)));
+  assert.deepEqual(mismatched.sections.glossary, read(referenceFixture()).sections.glossary);
+});
+
+test("reports malformed or unrecognized pages and retains independent valid sources", () => {
+  const data = referenceFixture({ alterSla: (rows) => rows.slice(1) });
+  const glossary = data.results.at(-1);
+  delete glossary.body;
+  data.results.at(-2).body.storage.value = "<p>Учебная страница без таблицы.</p>";
+  const result = autoRead(data);
+  assert.equal(result.services.length, 6);
+  assert.equal(result.usableStandard, true);
+  assert.equal(result.sections.severity.data.length, 11);
+  assert.match(result.sections.sla.error, /Отсутствует сочетание/);
+  assert.ok(result.issues.some(({ page_id, message }) => page_id === "64" && /body.storage.value/.test(message)));
+  assert.ok(result.issues.some(({ page_id, message }) => page_id === "63" && /не распознан/.test(message)));
+  assert.equal(result.sections.glossary.data, undefined);
+  assert.equal(result.sections.assumptions.data, undefined);
 });
 
 test("restores SLA from old drafts without shifting or retaining obsolete working hours", () => {

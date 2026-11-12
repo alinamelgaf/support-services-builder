@@ -139,13 +139,16 @@ async function checkStandalone(browser) {
     await page.goto(localFile);
     await checkAppIcon(page);
     assert.equal(await page.locator("#update").isVisible(), false);
-    await configure(page);
+    assert.equal(await page.locator("#sources-panel").getAttribute("open"), null);
+    assert.equal(await page.locator("#source-link").isVisible(), false);
+    await page.waitForFunction(() => !document.querySelector("#upload").disabled);
     const data = fixture();
     await upload(page, paginate(data, 0, 4));
     await page.getByText(/Неполная выгрузка REST/).waitFor();
     assert.equal(await page.locator('[data-format="excel"]').isDisabled(), true);
     await upload(page, paginate(data, 4, data.size));
     await page.getByText("Услуг загружено 6 из", { exact: false }).waitFor();
+    await configure(page);
     assert.deepEqual(await sorted(page), IDS);
     assert.equal(await standardParam(page).inputValue(), "12 часов");
     await page.getByRole("button", { name: "Описание и условия TS-1", exact: true }).click();

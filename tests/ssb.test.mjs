@@ -49,7 +49,7 @@ test("waits for consecutive pages, deduplicates and rejects conflicting or incom
   assert.equal(batch.add([legacy()], sources).data.services[0].id, "TS-5.A");
   const duplicate = { ...data, results: [...data.results, data.results[0]], size: data.size + 1, totalSize: data.size + 1 };
   assert.equal(importRest(duplicate).services.length, IDS.length);
-  assert.throws(() => importRest({ ...data, results: data.results.map((item) => ({ ...item, metadata: {} })) }), /metadata.labels/);
+  assert.equal(importRest({ ...data, results: data.results.map((item) => ({ ...item, metadata: {} })) }).services.length, IDS.length);
   assert.equal(importRest(fixture({ duplicate: true })).usableStandard, false);
 });
 
@@ -71,14 +71,15 @@ for (const pageCount of [28, 50, 51]) {
     delete data.totalSize;
     const batch = createImportBatch();
     const first = { ...paginate(data, 0, Math.min(50, pageCount)), limit: 50 };
-    let imported = batch.add([first], sources);
+    const emptySources = validateSources();
+    let imported = batch.add([first], emptySources);
 
     if (pageCount === 51) {
       assert.equal(new URL(first._links.next, BASE).searchParams.get("start"), "50");
       assert.equal(imported.complete, false);
       assert.equal(imported.count, 50);
       assert.equal(imported.data, null);
-      imported = batch.add([{ ...paginate(data, 50, pageCount), limit: 50 }], sources);
+      imported = batch.add([{ ...paginate(data, 50, pageCount), limit: 50 }], emptySources);
     } else {
       assert.equal(first._links.next, undefined);
     }
@@ -93,17 +94,17 @@ for (const pageCount of [28, 50, 51]) {
   });
 }
 
-test("reads a horizontal table of introductory texts and rejects incomplete label metadata", () => {
+test("reads horizontal introductory texts with incomplete label metadata and no saved sources", () => {
   const data = fixture();
   data.results.at(-1).body.storage.value = "<table><tr><th>Standard</th><th>Extended</th><th>Managed Service</th></tr>" +
     "<tr><td><b>Первый</b></td><td></td><td><ul><li>Третий</li></ul></td></tr></table>";
-  const { sections, usableStandard } = importRest(data);
+  data.results[0].metadata.labels.totalSize = 5;
+  const { sections, usableStandard, services } = createImportBatch().add([data], validateSources()).data;
   assert.equal(usableStandard, true);
   assert.equal(flattenRich(sections.intro.data.Standard)[0].bold, true);
   assert.equal(sections.intro.data.Extended.length, 0);
   assert.equal(sections.intro.data["Managed Service"][0].kind, "list");
-  data.results[0].metadata.labels.totalSize = 5;
-  assert.throws(() => importRest(data), /metadata.labels/);
+  assert.deepEqual(services.map(({ id }) => id), IDS);
 });
 
 test("keeps local settings separate from updated standard, with corporate fallback for new IDs", () => {

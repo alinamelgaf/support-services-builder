@@ -17,11 +17,17 @@ const slaFormat = (page, value) => page.locator(`input[name="sla-format"][value=
 const variant = (page, code) => page.locator(`input[name="proposal-variant"][value="${code}"]`);
 
 async function upload(page, data) {
-  await page.locator("#catalog-file").setInputFiles({
+  const [chooser] = await Promise.all([
+    page.waitForEvent("filechooser"),
+    page.getByRole("button", { name: "Загрузить JSON" }).click(),
+  ]);
+  await chooser.setFiles({
     name: "synthetic.json", mimeType: "application/json", buffer: Buffer.from(JSON.stringify(data)),
   });
   await page.getByText("Черновик сохранён на этом устройстве.").waitFor();
 }
+
+const withoutMetadata = (data) => ({ ...data, results: data.results.map(({ metadata, ...item }) => item) });
 
 async function exportFile(page, format, sample) {
   const [download] = await Promise.all([
@@ -52,14 +58,17 @@ for (const [index, channel] of channels.entries()) {
     page.on("pageerror", (error) => errors.push(error.message));
     await page.goto(home);
     assert.equal(await page.title(), production ? "Support Services Builder" : "SSB — Тестовая версия");
-    await page.locator("#sources-panel summary").click();
-    await page.locator("#source-base").fill(REFERENCE_SOURCES.base);
-    await page.locator("#source-space").fill(REFERENCE_SOURCES.space);
-    for (const [key, label] of Object.entries(REFERENCE_SOURCES.labels)) await page.locator("#label-" + key).fill(label);
-    await page.locator("#save-sources").click();
+    assert.equal(await page.locator("#sources-panel").getAttribute("open"), null);
+    assert.deepEqual(await page.locator("#sources-panel input").evaluateAll((fields) => fields.map((field) => field.value)), Array(9).fill(""));
+    assert.equal(await page.locator("#sources-notice").isVisible(), false);
+    assert.equal(await page.locator("#source-link").isVisible(), false);
     assert.equal(await include(page, "sla").isDisabled(), true);
     assert.match(await page.locator("#reason-sla").textContent(), /Источник не загружен/);
-    await upload(page, referenceFixture());
+    await upload(page, withoutMetadata(referenceFixture()));
+    const summary = await page.locator("#catalog-summary").textContent();
+    assert.match(summary, /Услуг загружено 6 из 6/);
+    for (const name of ["Базовая конфигурация", "Вводный текст", ...names]) assert.ok(summary.includes(name));
+    assert.equal(await page.locator("#catalog-notice").isVisible(), false);
     for (const width of [1280, 375]) {
       await page.setViewportSize({ width, height: 900 });
       for (const [code, name] of Object.entries(SUPPORT_NAMES)) {
@@ -174,7 +183,7 @@ for (const [index, channel] of channels.entries()) {
       assert.doesNotMatch(restored.text, /Старые часы из черновика/);
     }
 
-    await upload(page, referenceFixture({ alterSla: () => null }));
+    await upload(page, withoutMetadata(referenceFixture({ alterSla: () => null })));
     assert.equal(await include(page, "sla").isDisabled(), true);
     assert.equal(await include(page, "severity").isChecked(), true);
     assert.match(await page.locator("#reason-sla").textContent(), /отсутствует|заголовки/);
@@ -182,14 +191,31 @@ for (const [index, channel] of channels.entries()) {
       alterSla: (rows) => rows.map((row) => row[0] === "10" && row[1] === "Extended"
         ? row.map((value) => value === "20 минут" ? "25 минут" : value) : row),
     });
-    await upload(page, updated);
+    await upload(page, withoutMetadata(updated));
     assert.equal(await include(page, "sla").isChecked(), true);
     assert.equal(await mode(page, "all").isChecked(), true);
     assert.equal(await slaFormat(page, "separate").isChecked(), true);
     assert.match((await exportFile(page, "word")).text, /25 минут/);
+    const duplicate = { ...structuredClone(updated.results.at(-1)), id: "66", title: "Другой учебный глоссарий", metadata: { labels: [] } };
+    const ambiguous = { ...updated, results: [...updated.results, duplicate], size: updated.size + 1, totalSize: updated.totalSize + 1 };
+    await upload(page, ambiguous);
+    assert.equal(await include(page, "glossary").isDisabled(), true);
+    assert.match(await page.locator("#issue-list").textContent(), /Глоссарий.*неоднозначен.*64.*66/);
+    assert.equal(await include(page, "sla").isEnabled(), true);
+
+    await page.locator("#sources-panel summary").click();
+    await page.locator("#source-base").fill(REFERENCE_SOURCES.base);
+    await page.locator("#source-space").fill(REFERENCE_SOURCES.space);
+    for (const [key, label] of Object.entries(REFERENCE_SOURCES.labels)) await page.locator("#label-" + key).fill(label);
+    await page.locator("#save-sources").click();
+    assert.equal(await page.locator("#source-link").isVisible(), true);
+    await upload(page, ambiguous);
+    assert.equal(await include(page, "glossary").isEnabled(), true);
+    assert.equal(await page.locator("#catalog-notice").isVisible(), false);
+
     assert.deepEqual(external, []);
     assert.deepEqual(errors, []);
-    console.log(channel + ": section toggles, SLA modes, exports, reimport, draft persistence and no external requests — OK");
+    console.log(channel + ": empty-settings import, source recognition and ambiguity, configured import, reimport, exports and draft — OK");
   } finally {
     await browser.close();
   }

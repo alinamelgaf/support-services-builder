@@ -46,8 +46,7 @@ function fieldKey(cell) {
   return FIELDS.get(label);
 }
 
-function properties(storage) {
-  const root = parseDocument(storage, { recognizeCDATA: true, recognizeSelfClosing: true });
+function propertyTables(root) {
   const tables = [];
   for (const macro of descendants(root)) {
     if (!isMacro(macro) || macro.attribs["ac:name"] !== "details") continue;
@@ -72,6 +71,19 @@ function properties(storage) {
       if (mapped.length) tables.push(mapped);
     }
   }
+  return tables;
+}
+
+export function hasServiceProperties(root) {
+  return propertyTables(root).some((table) => {
+    const keys = new Set(table.map(([key]) => key));
+    return keys.size >= 2 && (keys.has("id") || keys.has("description"));
+  });
+}
+
+function properties(storage) {
+  const root = parseDocument(storage, { recognizeCDATA: true, recognizeSelfClosing: true });
+  const tables = propertyTables(root);
   if (!tables.length) throw new Error("Таблица Page Properties с полями услуги не найдена.");
   if (tables.length > 1) throw new Error("Найдено несколько таблиц Page Properties с полями услуги.");
   const fields = new Map();
