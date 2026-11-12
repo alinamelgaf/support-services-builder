@@ -59,27 +59,38 @@ function fixedTable(rows, widths) {
   });
 }
 
-function composition(proposal) {
-  const selected = 2 + proposal.selectedIndex;
+function comparisonHeadings(headers, widths, selected, keepNext) {
   const makeRow = (values, style, options) => new TableRow({
     ...options,
-    children: values.map((value, index) => tableCell(value, WIDTHS[index], style(index))),
+    children: values.map((value, index) => tableCell(value, widths[index], style(index))),
   });
-  const marker = makeRow(COMPARISON_HEADERS.map((_, index) => index === selected ? "Предложение" : ""),
-    (index) => ({ background: index === selected ? TEAL : PALE_BLUE, white: true, bold: true, center: true }),
+  const marker = makeRow(headers.map((_, index) => index === selected ? "Предложение" : ""),
+    (index) => ({ background: index === selected ? TEAL : PALE_BLUE, white: true, bold: true, center: true, keepNext }),
     { tableHeader: true, cantSplit: true });
-  const header = makeRow(COMPARISON_HEADERS, (index) => ({
-    background: index === selected ? TEAL : NAVY, white: true, bold: true, center: true,
+  const header = makeRow(headers, (index) => ({
+    background: index === selected ? TEAL : NAVY, white: true, bold: true, center: true, keepNext,
   }), { tableHeader: true, cantSplit: true });
+  return [marker, header];
+}
+
+function comparisonCellStyle(column, selected, band) {
+  return {
+    background: column === selected ? PALE_TEAL : band % 2 ? PALE_BLUE : WHITE,
+    bold: column === 0, center: column >= 2,
+  };
+}
+
+function composition(proposal) {
+  const selected = 2 + proposal.selectedIndex;
   const rows = proposal.rows.map(({ id, name, values }, rowIndex) => {
     const cells = [id, name, ...values];
     const short = cells.every((value) => value.length <= 300 && value.split("\n").length <= 10);
-    return makeRow(cells, (index) => ({
-      background: index === selected ? PALE_TEAL : rowIndex % 2 ? PALE_BLUE : WHITE,
-      bold: index === 0, center: index >= 2,
-    }), { cantSplit: short });
+    return new TableRow({
+      cantSplit: short,
+      children: cells.map((value, column) => tableCell(value, WIDTHS[column], comparisonCellStyle(column, selected, rowIndex))),
+    });
   });
-  return fixedTable([marker, header, ...rows], WIDTHS);
+  return fixedTable([...comparisonHeadings(COMPARISON_HEADERS, WIDTHS, selected), ...rows], WIDTHS);
 }
 
 function* renderBlocks(blocks, numbering, depth = 0, prefix) {
@@ -139,29 +150,35 @@ function serviceSections(rows, numbering) {
 const sectionHeading = (key) => new Paragraph({ heading: HeadingLevel.HEADING_1, text: SECTION_LABELS[key], keepNext: true });
 const subheading = (text) => new Paragraph({ heading: HeadingLevel.HEADING_2, children: textRuns({ text }), keepNext: true });
 
-function referenceHeader(headers, widths, selected = -1, highlighted = false) {
+function referenceHeader(headers, widths, highlighted = false) {
   return new TableRow({
     tableHeader: true, cantSplit: true,
     children: headers.map((text, column) => tableCell(text, widths[column], {
-      background: highlighted || column === selected ? TEAL : NAVY, white: true, bold: true, keepNext: true,
+      background: highlighted ? TEAL : NAVY, white: true, bold: true, keepNext: true,
     })),
   });
 }
 
 function slaTable({ headers, selectedColumn, highlighted, groups, caption }) {
   const widths = caption ? [2517, 1950, 1950, 1950, 1950] : [1930, 2457, 1976, 1977, 1977];
+  const comparative = selectedColumn !== undefined;
   const rows = groups.flatMap((rows, group) => {
     const keepGroup = rows.flat().every((text) => text.length <= 110 && text.split("\n").length <= 2);
     return rows.map((cells, index) => new TableRow({
       cantSplit: cells.every((text) => text.length <= 360 && text.split("\n").length <= 8),
       children: cells.map((text, column) => tableCell(text, widths[column], {
-        background: highlighted || column === selectedColumn ? PALE_TEAL : (caption ? index : group) % 2 ? PALE_BLUE : WHITE,
-        bold: column === 0,
+        ...(comparative ? comparisonCellStyle(column, selectedColumn, group) : {
+          background: highlighted ? PALE_TEAL : index % 2 ? PALE_BLUE : WHITE,
+          bold: column === 0,
+        }),
         keepNext: keepGroup && index < rows.length - 1,
       })),
     }));
   });
-  return fixedTable([referenceHeader(headers, widths, selectedColumn, highlighted), ...rows], widths);
+  const headings = comparative
+    ? comparisonHeadings([...headers.slice(0, 2), ...COMPARISON_HEADERS.slice(2)], widths, selectedColumn, true)
+    : [referenceHeader(headers, widths, highlighted)];
+  return fixedTable([...headings, ...rows], widths);
 }
 
 function referenceTable(headers, widths, records, numbering) {

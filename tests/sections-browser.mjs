@@ -110,7 +110,12 @@ for (const [index, channel] of channels.entries()) {
         assert.match(file.text, /Пример Extended/);
         assert.match(file.text, /Учебная организация/);
         assert.match(file.text, /20 минут/);
-        if (format === "word" || layout === "separate") assert.match(file.text, /Extended ✓/);
+        if (layout === "separate") assert.match(file.text, /Extended ✓/);
+        else if (format === "word") {
+          const sla = file.text.slice(file.text.indexOf("Матрица SLA"), file.text.indexOf("Уровни критичности"));
+          assert.match(sla, /Предложение.*?Extended/);
+          assert.doesNotMatch(sla, /✓/);
+        }
         for (const name of Object.values(SUPPORT_NAMES)) assert.ok(file.text.includes(name));
         assert.equal(file.text.includes("Extended ✓ — Предложение"), layout === "separate");
         assert.doesNotMatch(file.text + file.sections, /wiki\.example\.invalid|BAD_SCRIPT|Матрица RACI|Часы работы/);

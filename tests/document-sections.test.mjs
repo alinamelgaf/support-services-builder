@@ -158,11 +158,13 @@ test("exports optional Word sections and Excel sheets in order with selected SLA
       assert.equal(sheet.getCell("A2").value, "Extended\n" + SUPPORT_NAMES.Extended);
       assert.equal(sheet.getCell("B4").value, "20 минут");
     }
-    for (const name of ["Матрица SLA", "Уровни критичности", "Глоссарий"]) {
+    for (const name of ["Описание услуг", "Матрица SLA", "Уровни критичности", "Глоссарий"]) {
       assert.equal(workbook.getWorksheet(name).views[0].xSplit ?? 0, 0);
       assert.ok(workbook.getWorksheet(name).views[0].ySplit > 0);
     }
-    for (const name of ["Описание услуг", "Допущения и ограничения"]) assert.equal(workbook.getWorksheet(name).views[0].xSplit, 2);
+    assert.equal(workbook.getWorksheet("Описание услуг").views[0].ySplit, 2);
+    assert.deepEqual(workbook.getWorksheet("Описание услуг").columns.map(({ width }) => width), [14, 32, 76, 60]);
+    assert.equal(workbook.getWorksheet("Допущения и ограничения").views[0].xSplit, 2);
     assert.equal(workbook.getWorksheet("Предложение").views[0].xSplit ?? 0, 0);
     assert.equal(workbook.getWorksheet("Уровни критичности").getCell("A13").value, "90");
     assert.match(workbook.getWorksheet("Уровни критичности").getCell("D3").text, /• Пользователи/);
@@ -184,13 +186,15 @@ test("exports optional Word sections and Excel sheets in order with selected SLA
     assert.match(sla, /<w:tblHeader\/>/);
     assert.match(sla, /80 — Вопрос/);
     assert.doesNotMatch(sla, /11 —|90 —|Часы работы|<w:tblGridChange/);
-    if (slaMode === "all") assert.match(sla, /Extended ✓.*?w:fill="E5F3EE"/);
-    else {
+    if (slaMode === "all") {
+      assert.match(sla, /Предложение.*?Extended.*?w:fill="E5F3EE"/);
+      assert.doesNotMatch(sla, /✓/);
+    } else {
       assert.doesNotMatch(sla, /Standard|Managed Service/);
       assert.ok(sla.indexOf("Extended") < sla.indexOf("<w:tbl>"));
       assert.match(sla, /Extended<\/w:t>.*?<w:br\/>.*?Расширенная поддержка 24×7/);
     }
-    const slaRows = [...sla.matchAll(/<w:tr>.*?<\/w:tr>/gs)].map(([row]) => row).slice(1);
+    const slaRows = [...sla.matchAll(/<w:tr>.*?<\/w:tr>/gs)].map(([row]) => row).slice(slaMode === "all" ? 2 : 1);
     const expectedRows = data.sections.sla[0].groups.flat();
     assert.equal(slaRows.length, expectedRows.length);
     assert.doesNotMatch(slaRows.join(""), /24×7/);
@@ -211,6 +215,35 @@ test("exports optional Word sections and Excel sheets in order with selected SLA
     assert.match(cells[0], />11<\/w:t>/);
     assert.doesNotMatch(cells[2], /<w:t[ >]/);
     assert.match(cells[3], /Учебное определение 11/);
+  }
+});
+
+test("Word comparative SLA uses the composition table styling and marker for each selected package", async () => {
+  const result = read();
+  const tableRows = (table) => [...table.matchAll(/<w:tr>.*?<\/w:tr>/gs)].map(([row]) =>
+    [...row.matchAll(/<w:tc>.*?<\/w:tc>/gs)].map(([cell]) => cell));
+  const style = (cell) => cell.match(/<w:(?:shd|jc)\b[^>]*\/>|<w:rPr>.*?<\/w:rPr>/gs);
+  for (const [index, selected] of packages.entries()) {
+    const docx = await generateWord(proposal(result, selected, { included, slaMode: "all" }));
+    const zip = await JSZip.loadAsync(await docx.arrayBuffer());
+    const xml = await zip.file("word/document.xml").async("string");
+    const [composition, sla] = [...xml.matchAll(/<w:tbl>.*?<\/w:tbl>/gs)].map(([table]) => table);
+    const [markers, headings, ...rows] = tableRows(sla);
+    const [proposalMarkers, proposalHeadings, firstProposalRow] = tableRows(composition);
+    assert.equal([...sla.matchAll(/<w:tblHeader\/>/g)].length, 2);
+    assert.doesNotMatch(sla, /✓/);
+    for (const [offset, code] of packages.entries()) {
+      const column = offset + 2;
+      assert.equal(markers[column].includes("Предложение"), offset === index);
+      assert.deepEqual(style(markers[column]), style(proposalMarkers[column]));
+      assert.ok(headings[column].includes(code) && headings[column].includes(SUPPORT_NAMES[code]));
+      assert.deepEqual(style(headings[column]), style(proposalHeadings[column]));
+      for (const row of rows) {
+        assert.match(row[column], /<w:jc w:val="center"\/>/);
+        assert.equal(row[column].includes('w:fill="E5F3EE"'), offset === index);
+        if (offset === index) assert.deepEqual(style(row[column]), style(firstProposalRow[column]));
+      }
+    }
   }
 });
 

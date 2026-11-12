@@ -257,7 +257,7 @@ export async function generateExcel(proposal) {
   workbook.creator = "Support Services Builder";
   const descriptions = layout(workbook, DESCRIPTION_SHEET, DESCRIPTION_SHEET, DESCRIPTION_WIDTHS, [
     "ID услуги", "Наименование услуги", "Описание услуги", CONDITIONS_TITLE,
-  ], 2);
+  ], 2, { freezeColumns: false });
   const descriptionRows = writeRows(descriptions, proposal.rows.map(({ id, name, description, conditions }) => [
     runs(id), runs(name), flattenRich(description, true), flattenRich(conditions, true),
   ]), DESCRIPTION_WIDTHS, 3);
