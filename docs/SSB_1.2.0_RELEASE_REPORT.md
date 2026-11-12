@@ -30,3 +30,11 @@
 3. После открытия проверьте номер **1.2.0**, окно **Что нового** и восстановленный черновик. При необходимости загрузите актуальную выгрузку Confluence с новыми источниками.
 
 Контрольная точка отката — [стабильный релиз v1.1.0](https://github.com/alinamelgaf/support-services-builder/releases/tag/v1.1.0). Порядок восстановления описан в [инструкции отката](ROLLBACK.md).
+
+## Публикация и проверка рабочего сайта
+
+- Тег `v1.2.0` указывает на [коммит 70cb08e](https://github.com/alinamelgaf/support-services-builder/commit/70cb08ee9237084f6dbc2bb89bdd7d7c65d8add4). [CI Validate source and builds](https://github.com/alinamelgaf/support-services-builder/actions/runs/43187235410) завершился успешно.
+- [Workflow Publish an approved release](https://github.com/alinamelgaf/support-services-builder/actions/runs/43187581331) выполнил сборку, дождался одобрения в `public-release`, опубликовал [стабильный релиз](https://github.com/alinamelgaf/support-services-builder/releases/tag/v1.2.0) и успешно развернул Pages. Опубликованные Release Notes совпали с CHANGELOG. Контрольные суммы обоих скачанных ZIP совпали с опубликованными SHA-256.
+- [Рабочий сайт](https://ssb.melgaf.com/) показывает 1.2.0 по HTTPS. Восемь основных ресурсов, включая манифест, Service Worker, иконки и руководство, совпали с релизным архивом. Элементы тестовой среды отсутствуют. В Chrome и Edge проверены загрузка учебного JSON, новые разделы, все три формата SLA, Word и Excel.
+- В выделенном профиле Chrome установленный экземпляр с рабочего сайта обновился с 1.1.0 на 1.2.0 без переустановки. Черновик восстановился. Проверены «Помощь», «Что нового», «Проверить обновления» и экспорт Word после перехода.
+- Частные маркеры проверены во всех 21 коммите релизного диапазона. Предыдущий тег и архивы 1.1.0 сохранены. [Локальная тестовая среда 1.2.0-dev](http://localhost:4173/) работает в ветке `dev`.
