@@ -17,6 +17,10 @@ export const SLA_METRICS = [
   "Время предоставления временного решения", "Время предоставления постоянного решения", "Время ответа",
 ];
 
+export function supportHeading({ code, name }, marker = "") {
+  return `${code}${marker}\n${name}`;
+}
+
 export function restoreDocumentSources(sections) {
   const sla = sections?.sla;
   if (!sla?.data) return sections ?? {};
@@ -44,7 +48,7 @@ export function sectionReason(key, sources, selected) {
   return "";
 }
 
-export function buildDocumentSections(sources, options, selected, codes, bases) {
+export function buildDocumentSections(sources, options, selected, packages, bases) {
   const { included, slaMode, slaFormat } = documentOptions(options);
   const data = (key) => included[key] && !sectionReason(key, sources, selected) ? sources[key].data : null;
   const clean = (blocks) => withoutSourceLinks(blocks, bases);
@@ -62,21 +66,22 @@ export function buildDocumentSections(sources, options, selected, codes, bases) 
     const value = (severityCode, support, index) => records.get(severityCode + "|" + support)[index];
     if (slaMode === "all" && slaFormat === "comparison") {
       sla = [{
-        headers: ["Уровень критичности", "Показатель", ...codes.map((code) => code === selected ? code + " ✓" : code)],
-        selectedColumn: 2 + codes.indexOf(selected),
+        headers: ["Уровень критичности", "Показатель", ...packages.map((option) =>
+          supportHeading(option, option.code === selected ? " ✓" : ""))],
+        selectedColumn: 2 + packages.findIndex(({ code }) => code === selected),
         groups: SLA_CODES.map((code) => SLA_METRICS.map((metric, index) => [
-          index ? "" : label(code), metric, ...codes.map((support) => value(code, support, index)),
+          index ? "" : label(code), metric, ...packages.map((option) => value(code, option.code, index)),
         ])),
       }];
     } else {
-      const packages = slaMode === "all" ? codes : [selected];
-      sla = packages.map((support) => {
-        const highlighted = packages.length > 1 && support === selected;
+      const includedPackages = slaMode === "all" ? packages : packages.filter(({ code }) => code === selected);
+      sla = includedPackages.map((option) => {
+        const highlighted = includedPackages.length > 1 && option.code === selected;
         return {
-          caption: highlighted ? support + " ✓ — Предложение" : support,
+          caption: supportHeading(option, highlighted ? " ✓ — Предложение" : ""),
           highlighted,
           headers: ["Показатель", ...SLA_CODES.map(label)],
-          groups: [SLA_METRICS.map((metric, index) => [metric, ...SLA_CODES.map((code) => value(code, support, index))])],
+          groups: [SLA_METRICS.map((metric, index) => [metric, ...SLA_CODES.map((code) => value(code, option.code, index))])],
         };
       });
     }

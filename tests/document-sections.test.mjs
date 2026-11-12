@@ -8,7 +8,7 @@ import { generateExcel } from "../src/excel.js";
 import { buildProposal, OPTIONS } from "../src/proposal.js";
 import { plainText } from "../src/rich-text.js";
 import { generateWord } from "../src/word.js";
-import { BASE, paginate, referenceFixture, REFERENCE_SOURCES } from "./fixtures.mjs";
+import { BASE, paginate, referenceFixture, REFERENCE_SOURCES, SUPPORT_NAMES } from "./fixtures.mjs";
 
 const sources = validateSources(REFERENCE_SOURCES);
 const read = (data = referenceFixture()) => createImportBatch().add([data], sources).data;
@@ -95,6 +95,7 @@ test("rejects invalid additional tables without disabling independent valid sect
 
 test("builds all SLA views and automatically selects the introduction for each package", () => {
   const result = read();
+  assert.deepEqual(Object.fromEntries(OPTIONS.map(({ code, name }) => [code, name])), SUPPORT_NAMES);
   assert.equal(documentOptions().slaMode, "selected");
   assert.equal(documentOptions({ slaMode: "all" }).slaFormat, "comparison");
   assert.deepEqual(Object.keys(proposal(result, "Extended").sections), ["intro"]);
@@ -106,11 +107,12 @@ test("builds all SLA views and automatically selects the introduction for each p
     const [only] = single.sla;
     const [comparison] = all.sla;
     assert.equal(single.sla.length, 1);
-    assert.equal(only.caption, selected);
+    assert.equal(only.caption, selected + "\n" + SUPPORT_NAMES[selected]);
     assert.deepEqual(only.headers, ["Показатель", ...severityHeaders]);
-    assert.equal(comparison.headers[2 + index], selected + " ✓");
+    assert.equal(comparison.headers[2 + index], selected + " ✓\n" + SUPPORT_NAMES[selected]);
     assert.equal(comparison.selectedColumn, 2 + index);
-    assert.deepEqual(split.map(({ caption }) => caption.replace(" ✓ — Предложение", "")), packages);
+    assert.deepEqual(split.map(({ caption }) => caption.replace(" ✓ — Предложение", "")),
+      packages.map((code) => code + "\n" + SUPPORT_NAMES[code]));
     assert.ok(split.every(({ headers }) => headers.join("|") === only.headers.join("|")));
     assert.equal(split.filter(({ highlighted }) => highlighted).length, 1);
     assert.equal(split[index].highlighted, true);
@@ -133,6 +135,9 @@ test("exports optional Word sections and Excel sheets in order with selected SLA
     const workbook = new ExcelJS.Workbook();
     await workbook.xlsx.load(excel);
     assert.deepEqual(workbook.worksheets.map(({ name }) => name), ["Описание услуг", "Предложение", ...sectionNames]);
+    const proposalSheet = workbook.getWorksheet("Предложение");
+    const proposalHeader = proposalSheet.getColumn(1).values.indexOf("ID услуги");
+    assert.deepEqual(proposalSheet.getRow(proposalHeader).values.slice(3), packages.map((code) => code + "\n" + SUPPORT_NAMES[code]));
     const sheet = workbook.getWorksheet("Матрица SLA");
     const headerRow = slaMode === "all" ? 2 : 3;
     assert.equal(sheet.rowCount, slaMode === "all" ? 22 : 8);
@@ -141,7 +146,7 @@ test("exports optional Word sections and Excel sheets in order with selected SLA
     assert.deepEqual(sheet.getRow(headerRow).values.slice(1), data.sections.sla[0].headers);
     if (slaMode === "all") {
       assert.equal(sheet.getCell("A18").value, "80 — Вопрос");
-      assert.equal(sheet.getCell("D2").value, "Extended ✓");
+      assert.equal(sheet.getCell("D2").value, "Extended ✓\n" + SUPPORT_NAMES.Extended);
       assert.equal(sheet.getCell("D3").value, "20 минут");
       assert.equal(sheet.getCell("D22").fill.fgColor.argb, "FFE5F3EE");
       assert.equal(sheet.getCell("C4").value, "Не применимо");
@@ -149,7 +154,7 @@ test("exports optional Word sections and Excel sheets in order with selected SLA
       const breaks = [...(await xlsx.file("xl/worksheets/sheet3.xml").async("string")).matchAll(/<brk id="(\d+)"/g)];
       assert.ok(breaks.length && breaks.every(([, row]) => (Number(row) - 2) % 5 === 0));
     } else {
-      assert.equal(sheet.getCell("A2").value, "Extended");
+      assert.equal(sheet.getCell("A2").value, "Extended\n" + SUPPORT_NAMES.Extended);
       assert.equal(sheet.getCell("B4").value, "20 минут");
     }
     for (const name of ["Матрица SLA", "Уровни критичности", "Глоссарий"]) {
@@ -161,7 +166,7 @@ test("exports optional Word sections and Excel sheets in order with selected SLA
     assert.equal(workbook.getWorksheet("Уровни критичности").getCell("A13").value, "90");
     assert.match(workbook.getWorksheet("Уровни критичности").getCell("D3").text, /• Пользователи/);
     assert.equal(workbook.getWorksheet("Глоссарий").getCell("B4").text, "");
-    assert.doesNotMatch(await xlsx.file("xl/sharedStrings.xml").async("string"), /wiki\.example\.invalid|javascript:|BAD_SCRIPT|Часы работы|24×7/);
+    assert.doesNotMatch(await xlsx.file("xl/sharedStrings.xml").async("string"), /wiki\.example\.invalid|javascript:|BAD_SCRIPT|Часы работы/);
     const xml = await docx.file("word/document.xml").async("string");
     const relations = await docx.file("word/_rels/document.xml.rels").async("string");
     let previous = xml.indexOf("Описания услуг");
@@ -171,18 +176,23 @@ test("exports optional Word sections and Excel sheets in order with selected SLA
       previous = next;
     }
     assert.doesNotMatch(xml + relations, /Матрица RACI|wiki\.example\.invalid|javascript:|BAD_SCRIPT/);
-    const sla = xml.slice(xml.indexOf("Матрица SLA"), xml.indexOf("Уровни критичности"));
+    const slaStart = xml.indexOf("Матрица SLA");
+    const services = xml.slice(0, slaStart);
+    for (const name of Object.values(SUPPORT_NAMES)) assert.ok(services.includes(name));
+    const sla = xml.slice(slaStart, xml.indexOf("Уровни критичности"));
     assert.match(sla, /<w:tblHeader\/>/);
     assert.match(sla, /80 — Вопрос/);
-    assert.doesNotMatch(sla, /11 —|90 —|Часы работы|24×7|<w:tblGridChange/);
+    assert.doesNotMatch(sla, /11 —|90 —|Часы работы|<w:tblGridChange/);
     if (slaMode === "all") assert.match(sla, /Extended ✓.*?w:fill="E5F3EE"/);
     else {
       assert.doesNotMatch(sla, /Standard|Managed Service/);
       assert.ok(sla.indexOf("Extended") < sla.indexOf("<w:tbl>"));
+      assert.match(sla, /Extended<\/w:t>.*?<w:br\/>.*?Расширенная поддержка 24×7/);
     }
     const slaRows = [...sla.matchAll(/<w:tr>.*?<\/w:tr>/gs)].map(([row]) => row).slice(1);
     const expectedRows = data.sections.sla[0].groups.flat();
     assert.equal(slaRows.length, expectedRows.length);
+    assert.doesNotMatch(slaRows.join(""), /24×7/);
     for (const [index, values] of expectedRows.entries()) {
       for (const [col, value] of values.entries()) {
         assert.equal(sheet.getCell(headerRow + index + 1, col + 1).text, value);
@@ -222,11 +232,13 @@ test("exports three sequential SLA tables with every original value and highligh
   assert.equal(captions.length, 3);
   assert.equal(sheet.columnCount, 5);
   assert.equal(sheet.views[0].xSplit ?? 0, 0);
-  assert.doesNotMatch(sla, /Часы работы|24×7/);
+  assert.doesNotMatch(sla, /Часы работы/);
   for (const [index, code] of packages.entries()) {
     const caption = captions[index];
     assert.deepEqual(sheet.getRow(caption + 1).values.slice(1), ["Показатель", ...severityHeaders]);
-    assert.ok(sla.includes(model.sections.sla[index].caption));
+    const [firstLine, secondLine] = model.sections.sla[index].caption.split("\n");
+    assert.equal(sheet.getCell(caption, 1).text, firstLine + "\n" + secondLine);
+    assert.match(sla, new RegExp(`>${firstLine}</w:t>.*?<w:br/>.*?>${secondLine}</w:t>`));
     for (const header of severityHeaders) assert.ok(tables[index].includes(header));
     assert.equal(tables[index].includes('w:fill="E5F3EE"'), code === "Extended");
     assert.equal(sheet.getCell(caption + 2, 1).fill.fgColor.argb === "FFE5F3EE", code === "Extended");

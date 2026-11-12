@@ -1,9 +1,9 @@
 {
   "default_option": "Standard",
   "options": [
-    { "code": "Standard", "name": "Стандартная поддержка" },
-    { "code": "Extended", "name": "Расширенная поддержка" },
-    { "code": "Managed Service", "name": "Управляемая поддержка" }
+    { "code": "Standard", "name": "Стандартная поддержка 24×7" },
+    { "code": "Extended", "name": "Расширенная поддержка 24×7" },
+    { "code": "Managed Service", "name": "Полная поддержка 24×7" }
   ],
   "values": {}
 }

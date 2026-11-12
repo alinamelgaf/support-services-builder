@@ -1,6 +1,6 @@
 import presets from "../config/presets.json" with { type: "json" };
 import { XML_INVALID } from "./catalog.js";
-import { buildDocumentSections } from "./document-sections.js";
+import { buildDocumentSections, supportHeading } from "./document-sections.js";
 import { withoutSourceLinks } from "./rich-text.js";
 
 export const OPTIONS = presets.options;
@@ -10,7 +10,7 @@ export const CONDITIONS_TITLE = "Условия предоставления";
 export const BUILTIN_DEFAULTS = presets.values;
 export const COMPARISON_HEADERS = [
   "ID услуги", "Наименование услуги",
-  ...OPTIONS.map(({ code, name }) => `${code}\n${name}`),
+  ...OPTIONS.map((option) => supportHeading(option)),
 ];
 
 export function defaultSelection(id, code, defaults = BUILTIN_DEFAULTS) {
@@ -65,6 +65,6 @@ export function buildProposal(services, {
       ...row, description: withoutSourceLinks(row.description, confluenceBases),
       conditions: withoutSourceLinks(row.conditions, confluenceBases),
     })),
-    sections: buildDocumentSections(sections, document, selected, OPTIONS.map(({ code }) => code), confluenceBases),
+    sections: buildDocumentSections(sections, document, selected, OPTIONS, confluenceBases),
   };
 }

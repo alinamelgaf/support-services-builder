@@ -168,7 +168,8 @@ function addSlaSheet(workbook, tables) {
   sheet.pageSetup.fitToPage = false;
   if (separate) sheet.pageSetup.printTitlesRow = undefined;
   sheet.headerFooter.differentFirst = true;
-  const printLabel = tables[0].caption ?? tables[0].headers.slice(2).join("  |  ");
+  const printLabel = (tables[0].caption ? [tables[0].caption] : tables[0].headers.slice(2))
+    .map((label) => label.split("\n")[0]).join("  |  ");
   sheet.headerFooter.oddHeader = separate ? "&L" + title : "&L" + title + "&R" + printLabel;
 
   let pageHeight = sheet.getRow(1).height;
@@ -178,11 +179,11 @@ function addSlaSheet(workbook, tables) {
     if (caption) {
       sheet.mergeCells(`A${captionRow}:E${captionRow}`);
       header(sheet.getCell(captionRow, 1), caption, highlighted ? TEAL : NAVY);
-      sheet.getRow(captionRow).height = 25;
+      sheet.getRow(captionRow).height = 36;
     }
     headers.forEach((label, col) => header(sheet.getCell(headerRow, col + 1), label,
       highlighted || col === selectedColumn ? TEAL : NAVY));
-    sheet.getRow(headerRow).height = 32;
+    sheet.getRow(headerRow).height = packageTables ? 32 : 58;
     const groupSize = packageTables ? 1 : groups[0].length;
     const rows = groups.flat().map((cells) => cells.map(runs));
     const firstRows = writeRows(sheet, rows, widths, headerRow + 1, { selected: selectedColumn, groupSize, highlighted });

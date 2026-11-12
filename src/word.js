@@ -137,7 +137,7 @@ function serviceSections(rows, numbering) {
 }
 
 const sectionHeading = (key) => new Paragraph({ heading: HeadingLevel.HEADING_1, text: SECTION_LABELS[key], keepNext: true });
-const subheading = (text) => new Paragraph({ heading: HeadingLevel.HEADING_2, text, keepNext: true });
+const subheading = (text) => new Paragraph({ heading: HeadingLevel.HEADING_2, children: textRuns({ text }), keepNext: true });
 
 function referenceHeader(headers, widths, selected = -1, highlighted = false) {
   return new TableRow({

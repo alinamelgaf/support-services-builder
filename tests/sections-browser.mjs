@@ -3,7 +3,7 @@ import { mkdir, readFile } from "node:fs/promises";
 import { join } from "node:path";
 import JSZip from "jszip";
 import { chromium } from "playwright";
-import { referenceFixture, REFERENCE_SOURCES } from "./fixtures.mjs";
+import { referenceFixture, REFERENCE_SOURCES, SUPPORT_NAMES } from "./fixtures.mjs";
 
 const home = process.env.SSB_DEV_URL ?? "http://127.0.0.1:4173/";
 const output = process.env.SSB_SAMPLE_OUTPUT;
@@ -59,6 +59,16 @@ for (const [index, channel] of channels.entries()) {
     assert.equal(await include(page, "sla").isDisabled(), true);
     assert.match(await page.locator("#reason-sla").textContent(), /Источник не загружен/);
     await upload(page, referenceFixture());
+    for (const width of [1280, 375]) {
+      await page.setViewportSize({ width, height: 900 });
+      for (const [code, name] of Object.entries(SUPPORT_NAMES)) {
+        const label = page.getByRole("radio", { name: code + " " + name, exact: true }).locator("..").locator("small");
+        assert.equal(await label.textContent(), name);
+        assert.ok(await label.evaluate((node) => node.scrollWidth <= node.clientWidth + 1 && node.scrollHeight <= node.clientHeight + 1));
+        assert.equal(await page.locator(`#columns th[data-variant="${code}"] small`).textContent(), name);
+      }
+    }
+    await page.setViewportSize({ width: 1280, height: 900 });
     assert.equal(await page.locator("[contenteditable], #intro-toolbar, #intro-excel, #intro-word").count(), 0);
     assert.equal(await include(page, "intro").isChecked(), true);
     assert.equal(await include(page, "raci").isDisabled(), true);
@@ -101,8 +111,9 @@ for (const [index, channel] of channels.entries()) {
         assert.match(file.text, /Учебная организация/);
         assert.match(file.text, /20 минут/);
         assert.match(file.text, /Extended ✓/);
+        for (const name of Object.values(SUPPORT_NAMES)) assert.ok(file.text.includes(name));
         assert.equal(file.text.includes("Extended ✓ — Предложение"), layout === "separate");
-        assert.doesNotMatch(file.text + file.sections, /wiki\.example\.invalid|BAD_SCRIPT|Матрица RACI|Часы работы|24×7/);
+        assert.doesNotMatch(file.text + file.sections, /wiki\.example\.invalid|BAD_SCRIPT|Матрица RACI|Часы работы/);
       }
     }
     await mode(page, "selected").check();
@@ -111,7 +122,7 @@ for (const [index, channel] of channels.entries()) {
       const single = await exportFile(page, format, samplePath("selected", format));
       assert.match(single.text, /20 минут/);
       assert.match(single.text, /10 — Критический/);
-      assert.doesNotMatch(single.text, /Extended ✓|35 минут|45 минут|Часы работы|24×7/);
+      assert.doesNotMatch(single.text, /Extended ✓|35 минут|45 минут|Часы работы/);
     }
     await mode(page, "all").check();
     assert.equal(await slaFormat(page, "separate").isChecked(), true);

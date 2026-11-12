@@ -2,6 +2,11 @@ export const BASE = "https://wiki.example.invalid/confluence";
 export const SOURCES = { base: BASE, space: "DEMO", labels: { catalog: "demo_catalog", defaults: "demo_defaults", intros: "demo_intros" } };
 export const IDS = ["TS-1", "TS-1.A", "TS-2", "TS-5.A", "TS-10", "TS-10.A"];
 export const PUBLIC_LINK = "https://manual.example.invalid/guide";
+export const SUPPORT_NAMES = {
+  Standard: "Стандартная поддержка 24×7",
+  Extended: "Расширенная поддержка 24×7",
+  "Managed Service": "Полная поддержка 24×7",
+};
 export const REFERENCE_SOURCES = {
   ...SOURCES, labels: { ...SOURCES.labels, sla: "demo_sla", raci: "demo_raci", assumptions: "demo_assumptions", glossary: "demo_glossary" },
 };
