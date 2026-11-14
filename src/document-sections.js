@@ -43,7 +43,7 @@ export function documentOptions(saved) {
 export function sectionReason(key, sources, selected) {
   if (key === "raci") return "Пока не реализовано";
   const section = sources[key];
-  if (!section?.data) return section?.error ?? "Источник не загружен.";
+  if (!section?.data) return section?.error ?? section?.reason ?? "Источник не загружен.";
   if (key === "intro" && !hasRichText(section.data[selected] ?? [])) return "Для выбранного уровня поддержки текст отсутствует.";
   return "";
 }

@@ -191,6 +191,7 @@ function readTable(page, header, optional = false, exact = false) {
 
 function readStandard(page, ids, standard, warn) {
   const rows = readTable(page, headers.defaults);
+  if (!rows.length) throw new Error("Базовая конфигурация не содержит строк услуг.");
   const seen = new Set();
   const values = [];
   const included = [];
@@ -220,8 +221,11 @@ function readIntros(page, base) {
   const rows = readTable(page, headers.intros, true);
   if (!rows) {
     const columns = readTable(page, headers.introColumns, true, true) ?? readTable(page, headers.introColumns);
+    if (!columns.length) return;
     if (columns.length !== 1) throw new Error("Под заголовками трёх вариантов нужна одна строка вводных текстов.");
-    return Object.fromEntries(packageCodes.map((code, index) => [code, introduction(columns[0][index])]));
+    const values = columns[0].map(introduction);
+    if (values.some(hasRichText)) return Object.fromEntries(packageCodes.map((code, index) => [code, values[index]]));
+    return;
   }
   const values = new Map();
   for (const [variant, text] of rows) {
@@ -229,6 +233,7 @@ function readIntros(page, base) {
     if (!code || values.has(code)) throw new Error("В таблице вводных текстов найден неизвестный или повторный вариант.");
     values.set(code, introduction(text));
   }
+  if (![...values.values()].some(hasRichText)) return;
   if (values.size !== packageCodes.length) throw new Error("В таблице нужны все три варианта поддержки.");
   return Object.fromEntries(values);
 }
@@ -244,15 +249,17 @@ function readSla(page) {
     const key = code + "|" + support;
     if (pairs.has(key)) throw new Error(`Повтор сочетания ${code} и ${support}.`);
     pairs.add(key);
-    const blocks = metrics.map((cell) => cellRich(cell));
-    const missing = blocks.findIndex((value) => !hasRichText(value));
-    if (missing >= 0) throw new Error(`Показатель «${SLA_METRICS[missing]}» пуст для ${code} и ${support}.`);
-    return { code, support, values: blocks.map(plainText) };
+    return { code, support, values: metrics.map((cell) => cellRich(cell)) };
   });
+  if (!rows.some(({ values }) => values.some(hasRichText))) return;
+  for (const { code, support, values } of rows) {
+    const missing = values.findIndex((value) => !hasRichText(value));
+    if (missing >= 0) throw new Error(`Показатель «${SLA_METRICS[missing]}» пуст для ${code} и ${support}.`);
+  }
   for (const code of SLA_CODES) for (const support of codes.values()) {
     if (!pairs.has(code + "|" + support)) throw new Error(`Отсутствует сочетание ${code} и ${support}.`);
   }
-  return rows;
+  return rows.map(({ code, support, values }) => ({ code, support, values: values.map(plainText) }));
 }
 
 function readSeverity(page, base) {
@@ -263,11 +270,12 @@ function readSeverity(page, base) {
       if (!SEVERITY_CODES.includes(code)) throw new Error(`Неизвестный код критичности «${code}».`);
       if (seen.has(code)) throw new Error(`Повтор кода критичности ${code}.`);
       seen.add(code);
-      const name = cellText(nameCell);
-      const description = cellRich(fullCell, base);
-      if (!name || !hasRichText(description)) throw new Error(`Для кода ${code} требуется наименование и полное описание.`);
-      return { code, name, short: cellRich(shortCell, base), description };
+      return { code, name: cellText(nameCell), short: cellRich(shortCell, base), description: cellRich(fullCell, base) };
     });
+  if (!rows.some(({ name, short, description }) => name || hasRichText(short) || hasRichText(description))) return;
+  for (const { code, name, description } of rows) {
+    if (!name || !hasRichText(description)) throw new Error(`Для кода ${code} требуется наименование и полное описание.`);
+  }
   const missing = SEVERITY_CODES.filter((code) => !seen.has(code));
   if (missing.length) throw new Error(`В справочнике отсутствуют коды ${missing.join(", ")}.`);
   return rows;
@@ -276,12 +284,13 @@ function readSeverity(page, base) {
 function readAssumptions(page, base) {
   const rows = readTable(page, headers.assumptions).map(([section, text]) => {
     const category = ["Допущения", "Ограничения"].find((name) => keyText(name) === headerText(section));
-    const wording = cellRich(text, base);
     if (!category) throw new Error(`Неизвестный подраздел «${cellText(section)}».`);
-    if (!hasRichText(wording)) throw new Error(`Пустая формулировка в подразделе «${category}».`);
-    return { category, wording };
+    return { category, wording: cellRich(text, base) };
   });
-  if (!rows.length) throw new Error("Таблица не содержит формулировок.");
+  if (!rows.some(({ wording }) => hasRichText(wording))) return;
+  for (const { category, wording } of rows) {
+    if (!hasRichText(wording)) throw new Error(`Пустая формулировка в подразделе «${category}».`);
+  }
   return rows;
 }
 
@@ -292,27 +301,35 @@ function readGlossary(page, base) {
     if (!term || !hasRichText(definition)) throw new Error("Нужны русский термин и его определение.");
     return { term, english: cellText(eng), definition };
   });
-  if (!rows.length) throw new Error("Таблица не содержит терминов.");
-  return rows;
+  return rows.length ? rows : undefined;
 }
 
 const hasHeaders = (page, header, exact) => !matchingTables(page, header, exact).next().done;
 
+function hasNearlyCompleteHeader(page, header) {
+  // A missing header in an otherwise recognizable table belongs in the parser's diagnostics.
+  return page.tables.some(({ names }) => names.some((row) =>
+    header.filter((aliases) => row.some((name) => aliases.includes(name))).length >= header.length - 1));
+}
+
 function identifyPage(storage) {
-  if (typeof storage !== "string" || !storage.trim() || XML_INVALID.test(storage)) {
+  if (typeof storage !== "string") {
     throw new Error("Отсутствует корректное body.storage.value. Нужна выгрузка с содержимым страниц.");
   }
   const root = parseDocument(storage, { recognizeCDATA: true, recognizeSelfClosing: true });
-  const tables = Array.from(tableRows(root), (rows) => ({ rows, names: rows.map((row) => row.map(headerText)) }));
+  const tables = Array.from(tableRows(root), (rows) => ({
+    rows, names: rows.map((row) => row.map((cell) => keyText(plainText(readRich(cell.children)).trim()))),
+  }));
   const page = { tables };
   const types = [];
   if (hasServiceProperties(root)) types.push("catalog");
-  if (hasHeaders(page, headers.defaults)) types.push("defaults");
+  if (hasNearlyCompleteHeader(page, headers.defaults)) types.push("defaults");
   if (hasHeaders(page, headers.intros) || hasHeaders(page, headers.introColumns, true)) types.push("intros");
-  if (hasHeaders(page, headers.sla) || hasHeaders(page, headers.severity)) types.push("sla");
+  if (hasNearlyCompleteHeader(page, headers.sla) || hasNearlyCompleteHeader(page, headers.severity)) types.push("sla");
   if (hasHeaders(page, headers.assumptions)) types.push("assumptions");
-  if (hasHeaders(page, headers.glossary)) types.push("glossary");
-  return { types, tables };
+  if (hasNearlyCompleteHeader(page, headers.glossary)) types.push("glossary");
+  const invalid = XML_INVALID.test(storage);
+  return { types, tables: invalid ? undefined : tables, empty: !invalid && !types.length && !hasRichText(readRich(root.children)) };
 }
 
 function labelHints(page, labels) {
@@ -349,64 +366,82 @@ function normalizeRest(results, sources) {
     byId.set(id, data);
   }
   for (const page of byId.values()) {
+    if (page.hints.length && page.hints.every((key) => !SUPPORTED.has(key))) continue;
+    const hints = page.hints.filter((key) => SUPPORTED.has(key));
     const issue = (level, message) => issues.push({ level, page_id: page.pageId, title: page.title, message });
     let shape;
     try {
-      shape = identifyPage(page.storage);
+      shape = identifyPage(page.storage ?? "");
     } catch (failure) {
-      if (page.hints.length === 1 && sourcesByType.has(page.hints[0])) {
-        sourcesByType.get(page.hints[0]).push(page);
-      } else if (page.hints[0] !== "raci" || page.hints.length > 1) {
+      if (hints.length === 1) {
+        sourcesByType.get(hints[0]).push(page);
+      } else if (hints.length) {
         issue("error", failure instanceof RangeError ? "Слишком глубокая вложенность разметки страницы." : failure.message);
       }
       continue;
     }
-    const { types, tables } = shape;
-    const compatible = types.length ? types.filter((type) => page.hints.includes(type)) : page.hints;
+    const { types, tables, empty } = shape;
+    const compatible = types.length ? types.filter((type) => hints.includes(type)) : hints;
     if ((types.length > 1 && compatible.length !== 1) || (!types.length && compatible.length > 1)) {
       const candidates = (types.length ? types : compatible).map((type) => sourceNames.get(type)).join(", ");
       issue("error", `Тип источника неоднозначен. ${types.length ? "Найдены структуры" : "Найдены настроенные метки"}: ${candidates}.`);
       continue;
     }
     const type = types.length === 1 ? types[0] : compatible[0];
-    if (types.length === 1 && page.hints.some((hint) => hint !== type)) {
+    if (types.length === 1 && hints.some((hint) => hint !== type)) {
       issue("warning", `Настроенные метки не соответствуют содержимому. Распознан источник «${sourceNames.get(type)}».`);
     }
-    if (sourcesByType.has(type)) sourcesByType.get(type).push(type === "catalog" ? page : { ...page, tables });
-    else if (type !== "raci") issue("warning", "Тип источника не распознан по полям Page Properties или заголовкам таблиц.");
+    if (type) sourcesByType.get(type).push(type === "catalog" ? page : { ...page, tables, empty });
   }
   const catalog = loadCatalog({ schemaVersion: 1, pages: sourcesByType.get("catalog") }, sources.base);
   const standard = initialDefaults();
   const ids = new Map(catalog.services.map(({ id }) => [id.toLowerCase(), id]));
-  function readSource(key, read, section, header) {
+  function readSource(key, read, section, header, siblingHeader) {
+    const required = key === "defaults";
     const candidates = sourcesByType.get(key);
-    const matching = header ? candidates.filter((page) => page.tables && hasHeaders(page, header)) : [];
-    const pages = matching.length ? matching : candidates;
+    const matching = header ? candidates.filter((page) => page.tables && hasNearlyCompleteHeader(page, header)) : [];
+    const pages = matching.length ? matching : candidates.filter((page) => !siblingHeader ||
+      !page.tables || !hasNearlyCompleteHeader(page, siblingHeader));
     const name = sourceNames.get(key);
-    const labeled = pages.filter(({ hints }) => hints.length === 1 && hints[0] === key);
-    const page = pages.length === 1 ? pages[0] : labeled.length === 1 && pages.every((item) => item.complete) ? labeled[0] : null;
-    const issue = (level, message) => issues.push({
+    const issue = (level, message, page) => issues.push({
       level, page_id: page?.pageId, title: page?.title, message: [name, section, message].filter(Boolean).join(". "),
     });
-    if (!page) {
-      const error = pages.length
-        ? `Источник неоднозначен. Подходящие страницы: ${pages.map(({ pageId, title }) => title ? `${pageId} «${title}»` : pageId).join(", ")}. Оставьте в выгрузке нужную страницу или уточните источник меткой.`
-        : "Страница источника не найдена в JSON.";
-      if (pages.length || sources.labels[key] || key === "defaults") issue(pages.length ? "error" : "warning", error);
+    if (!pages.length) {
+      if (!required) return { reason: "Раздел отсутствует в выгрузке." };
+      const error = "Страница источника не найдена в JSON.";
+      issue("warning", error);
       return { error };
     }
-    try {
-      return { data: read(page, (message) => issue("warning", message)) };
-    } catch (failure) {
-      issue("error", failure.message);
-      return { error: failure.message };
+    const readPage = (page) => {
+      try {
+        return { data: page.empty && !required ? undefined : read(page, (message) => issue("warning", message, page)) };
+      } catch (failure) {
+        return { error: failure.message };
+      }
+    };
+    const filled = required ? pages.map((page) => ({ page })) : pages
+      .map((page) => ({ page, result: readPage(page) }))
+      .filter(({ result }) => result.data !== undefined || result.error);
+    if (!filled.length) return { reason: "Раздел не заполнен." };
+    const labeled = filled.filter(({ page: { hints } }) => hints.length === 1 && hints[0] === key);
+    const selected = filled.length === 1 ? filled[0]
+      : labeled.length === 1 && filled.every(({ page }) => page.complete) ? labeled[0] : null;
+    if (selected) {
+      const { page } = selected;
+      const result = selected.result ?? readPage(page);
+      if (result.error) issue("error", result.error, page);
+      return result;
     }
+    const subjects = filled.map(({ page: { pageId, title } }) => title ? `${pageId} «${title}»` : pageId).join(", ");
+    const error = `Источник неоднозначен. Подходящие страницы: ${subjects}. Оставьте в выгрузке нужную страницу или уточните источник меткой.`;
+    issue("error", error);
+    return { error };
   }
   const defaults = readSource("defaults", (page, warn) => readStandard(page, ids, standard, warn));
   const sections = {
     intro: readSource("intros", (page) => readIntros(page, sources.base)),
-    sla: readSource("sla", readSla, SECTION_LABELS.sla, headers.sla),
-    severity: readSource("sla", (page) => readSeverity(page, sources.base), SECTION_LABELS.severity, headers.severity),
+    sla: readSource("sla", readSla, SECTION_LABELS.sla, headers.sla, headers.severity),
+    severity: readSource("sla", (page) => readSeverity(page, sources.base), SECTION_LABELS.severity, headers.severity, headers.sla),
     assumptions: readSource("assumptions", (page) => readAssumptions(page, sources.base)),
     glossary: readSource("glossary", (page) => readGlossary(page, sources.base)),
   };

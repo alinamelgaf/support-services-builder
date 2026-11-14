@@ -3,7 +3,7 @@ import { test } from "node:test";
 import ExcelJS from "exceljs";
 import JSZip from "jszip";
 import { createImportBatch, queryUrl, validateSources } from "../src/confluence.js";
-import { documentOptions, restoreDocumentSources, SEVERITY_CODES, SLA_CODES, SLA_METRICS } from "../src/document-sections.js";
+import { documentOptions, restoreDocumentSources, sectionReason, SEVERITY_CODES, SLA_CODES, SLA_METRICS } from "../src/document-sections.js";
 import { generateExcel } from "../src/excel.js";
 import { buildProposal, OPTIONS } from "../src/proposal.js";
 import { plainText } from "../src/rich-text.js";
@@ -100,20 +100,82 @@ test("reports conflicting structures and duplicate pages without guessing; a mat
   assert.deepEqual(mismatched.sections.glossary, read(referenceFixture()).sections.glossary);
 });
 
-test("reports malformed or unrecognized pages and retains independent valid sources", () => {
+test("keeps diagnostics for malformed recognized pages and imports independent valid sources", () => {
   const data = referenceFixture({ alterSla: (rows) => rows.slice(1) });
   const glossary = data.results.at(-1);
-  delete glossary.body;
   data.results.at(-2).body.storage.value = "<p>Учебная страница без таблицы.</p>";
-  const result = autoRead(data);
+  glossary.body = { storage: { value: 42 } };
+  const result = read(data);
   assert.equal(result.services.length, 6);
   assert.equal(result.usableStandard, true);
   assert.equal(result.sections.severity.data.length, 11);
   assert.match(result.sections.sla.error, /Отсутствует сочетание/);
   assert.ok(result.issues.some(({ page_id, message }) => page_id === "64" && /body.storage.value/.test(message)));
-  assert.ok(result.issues.some(({ page_id, message }) => page_id === "63" && /не распознан/.test(message)));
+  assert.ok(result.issues.some(({ page_id, message }) => page_id === "63" && /заголовки/.test(message)));
   assert.equal(result.sections.glossary.data, undefined);
   assert.equal(result.sections.assumptions.data, undefined);
+});
+
+test("ignores missing optional pages and unsupported pages before and after configuring source labels", () => {
+  const data = referenceFixture({ alterSla: () => null });
+  data.results.pop();
+  data.results.push(
+    { id: "64", title: "Устаревшая страница" },
+    { id: "65", title: "Учебная таблица ролей", body: { storage: { value: "<table><tr><th>Роль</th><th>Действие</th></tr><tr><td>Автор</td><td>Согласует</td></tr></table>" } } },
+    { id: "66", title: "Нереализованный источник", metadata: { labels: [{ name: REFERENCE_SOURCES.labels.raci }] }, body: { storage: { value: 42 } } },
+  );
+  data.size = data.totalSize = data.results.length;
+  for (const result of [autoRead(data), read(data)]) {
+    assert.deepEqual(result.issues, []);
+    for (const key of ["sla", "glossary"]) assert.match(sectionReason(key, result.sections, "Standard"), /отсутствует/);
+    assert.equal(sectionReason("severity", result.sections, "Standard"), "");
+    assert.equal(sectionReason("raci", result.sections, "Standard"), "Пока не реализовано");
+    assert.equal(result.services.length, 6);
+    assert.equal(result.usableStandard, true);
+  }
+});
+
+test("keeps optional placeholders unavailable and preserves a populated table next to an empty copy", () => {
+  const data = referenceFixture({
+    alterSla: (rows) => rows.map(([code, support]) => [code, support, "", "", "", "", ""]),
+    alterSeverity: () => [],
+  });
+  const intro = data.results.find(({ id }) => id === "61");
+  intro.body.storage.value = "<table><tr><th>Вариант поддержки</th><th>Вводный текст</th></tr><tr><td>Standard</td><td><p><br></p></td></tr></table>";
+  const assumptions = data.results.at(-2);
+  assumptions.body.storage.value = "<table><tr><th>Раздел</th><th>Формулировка</th></tr><tr><td>Допущения</td><td>&nbsp;</td></tr></table>";
+  const glossary = data.results.at(-1);
+  glossary.body.storage.value = glossary.body.storage.value.split("</tr>")[0] + "</tr><tr><td></td></tr></table>";
+  for (const result of [autoRead(data), read(data)]) {
+    assert.deepEqual(result.issues, []);
+    for (const key of ["intro", "sla", "severity", "assumptions", "glossary"]) {
+      assert.equal(result.sections[key].data, undefined);
+      assert.match(sectionReason(key, result.sections, "Standard"), /не заполнен/);
+    }
+  }
+  intro.body.storage.value = "<p>&nbsp;<br></p>";
+  assert.match(sectionReason("intro", read(data).sections, "Standard"), /не заполнен/);
+  delete intro.body;
+  assert.deepEqual(read(data).issues, []);
+  data.results.push({ ...referenceFixture().results.at(-1), id: "65" });
+  data.size = data.totalSize = data.results.length;
+  const result = autoRead(data);
+  assert.deepEqual(result.issues, []);
+  assert.equal(result.sections.glossary.data.length, 2);
+  data.results.at(-1).metadata.labels = { results: [] };
+  assert.deepEqual(read(data).sections.glossary, result.sections.glossary);
+});
+
+test("still reports empty catalog cards and rejects an empty required standard", () => {
+  const data = referenceFixture();
+  const standard = data.results.find(({ id }) => id === "60");
+  standard.body.storage.value = standard.body.storage.value.split("</tr>")[0] + "</tr></table>";
+  data.results[0].body.storage.value = "<p><br></p>";
+  const result = read(data);
+  assert.equal(result.usableStandard, false);
+  assert.ok(result.issues.some(({ page_id, level, message }) => page_id === "60" && level === "error" && /строк услуг/.test(message)));
+  assert.ok(result.issues.some(({ page_id, level }) => page_id === data.results[0].id && level === "error"));
+  assert.deepEqual(read().issues, []);
 });
 
 test("restores SLA from old drafts without shifting or retaining obsolete working hours", () => {
@@ -128,7 +190,6 @@ test("restores SLA from old drafts without shifting or retaining obsolete workin
 
 test("rejects invalid additional tables without disabling independent valid sections", () => {
   const badSla = [
-    [() => null, /заголовки/],
     [(rows) => [...rows, rows[0]], /Повтор сочетания/],
     [(rows) => rows.slice(1), /Отсутствует сочетание/],
     [(rows) => [["0", ...rows[0].slice(1)], ...rows.slice(1)], /Код критичности/],
@@ -143,7 +204,6 @@ test("rejects invalid additional tables without disabling independent valid sect
     assert.ok(issues.some(({ message }) => message.includes("SLA и уровни критичности") && error.test(message)));
   }
   for (const [alterSeverity, error] of [
-    [() => null, /заголовки/],
     [(rows) => [...rows, rows[0]], /Повтор кода/],
     [(rows) => rows.slice(1), /отсутствуют коды/],
     [(rows) => [[...rows[0].slice(0, -1), "<script>ignore</script>"], ...rows.slice(1)], /полное описание/],
@@ -159,7 +219,13 @@ test("rejects invalid additional tables without disabling independent valid sect
   const result = read(broken);
   assert.match(result.sections.assumptions.error, /подраздел/);
   assert.match(result.sections.glossary.error, /заголовки/);
+  assert.match(autoRead(broken).sections.glossary.error, /заголовки/);
   assert.deepEqual(Object.keys(proposal(result, "Extended", { included }).sections), ["intro", "sla", "severity"]);
+  const brokenHeader = referenceFixture();
+  const sla = brokenHeader.results.find(({ id }) => id === "62");
+  sla.body.storage.value = sla.body.storage.value.replace("Время ответа", "Опечатка");
+  assert.match(autoRead(brokenHeader).sections.sla.error, /заголовки/);
+  assert.equal(autoRead(brokenHeader).sections.severity.data.length, 11);
 });
 
 test("builds all SLA views and automatically selects the introduction for each package", () => {

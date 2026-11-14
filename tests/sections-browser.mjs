@@ -24,6 +24,10 @@ async function upload(page, data) {
   await chooser.setFiles({
     name: "synthetic.json", mimeType: "application/json", buffer: Buffer.from(JSON.stringify(data)),
   });
+  await page.waitForFunction(() => {
+    const input = document.querySelector("#catalog-file");
+    return !input.disabled && !input.files.length;
+  });
   await page.getByText("Черновик сохранён на этом устройстве.").waitFor();
 }
 
@@ -186,12 +190,39 @@ for (const [index, channel] of channels.entries()) {
     await upload(page, withoutMetadata(referenceFixture({ alterSla: () => null })));
     assert.equal(await include(page, "sla").isDisabled(), true);
     assert.equal(await include(page, "severity").isChecked(), true);
-    assert.match(await page.locator("#reason-sla").textContent(), /отсутствует|заголовки/);
+    assert.match(await page.locator("#reason-sla").textContent(), /отсутствует/);
+    assert.equal(await page.locator("#catalog-notice").isVisible(), false);
+
+    const brokenSla = withoutMetadata(referenceFixture({ alterSla: (rows) => rows.slice(1) }));
+    await upload(page, brokenSla);
+    assert.equal(await include(page, "sla").isDisabled(), true);
+    assert.match(await page.locator("#issue-list").textContent(), /Отсутствует сочетание/);
+    assert.match(await page.locator("#catalog-notice").getAttribute("class"), /\berror\b/);
+    await page.reload();
+    await page.getByText("Черновик восстановлен на этом устройстве.").waitFor();
+    assert.match(await page.locator("#issue-list").textContent(), /Отсутствует сочетание/);
+
     const updated = referenceFixture({
       alterSla: (rows) => rows.map((row) => row[0] === "10" && row[1] === "Extended"
         ? row.map((value) => value === "20 минут" ? "25 минут" : value) : row),
     });
-    await upload(page, withoutMetadata(updated));
+    const corrected = withoutMetadata(structuredClone(updated));
+    corrected.results.at(-1).body.storage.value = "<table><tr><th>Термин RU</th><th>Term ENG</th><th>Определение RU</th></tr></table>";
+    corrected.results.push(
+      { id: "67", title: "Учебная страница без содержимого" },
+      { id: "68", title: "Учебный источник", body: { storage: { value: "<p>Последовательность согласования</p>" } } },
+    );
+    corrected.size = corrected.totalSize = corrected.results.length;
+    await upload(page, corrected);
+    assert.equal(await include(page, "glossary").isDisabled(), true);
+    assert.match(await page.locator("#reason-glossary").textContent(), /не заполнен/);
+    assert.equal(await page.locator("#catalog-notice").isVisible(), false);
+    assert.equal(await page.locator("#issues").isVisible(), false);
+    await page.reload();
+    await page.getByText("Черновик восстановлен на этом устройстве.").waitFor();
+    assert.equal(await page.locator("#catalog-notice").isVisible(), false);
+    assert.equal(await page.locator("#issues").isVisible(), false);
+    assert.match(await page.locator("#reason-glossary").textContent(), /не заполнен/);
     assert.equal(await include(page, "sla").isChecked(), true);
     assert.equal(await mode(page, "all").isChecked(), true);
     assert.equal(await slaFormat(page, "separate").isChecked(), true);
