@@ -164,12 +164,16 @@ async function checkStandalone(browser) {
     await standardParam(page).fill("8 часов в черновике");
     await upload(page, fixture({ parameter: "18 часов", extra: true }));
     await page.getByText(/Сохранены текущие правки предложения/).waitFor();
+    const differences = page.locator("#conflict-notice");
+    assert.equal(await differences.getAttribute("class"), "notice");
+    assert.match(await differences.textContent(), /применяются локальные настройки менеджера.*TS-1, TS-1\.A\./);
     assert.equal(await standardParam(page).inputValue(), "8 часов в черновике");
     assert.equal(await page.getByRole("textbox", { name: "Параметр TS-3.B в Extended", exact: true }).inputValue(), "6 часов");
     await dialog(page, "#apply-standard", /правки.*будут сброшены/, false);
     assert.equal(await standardParam(page).inputValue(), "8 часов в черновике");
     await dialog(page, "#apply-standard", /сохранённые настройки менеджера останутся/i);
     assert.equal(await standardParam(page).inputValue(), "18 часов");
+    assert.match(await differences.textContent(), /применяется базовая конфигурация Confluence.*TS-1, TS-1\.A\./);
     await dialog(page, "#reset", /Восстановить локальные настройки/);
     assert.equal(await standardParam(page).inputValue(), "7 часов локально");
     assert.equal(await page.locator("#include-intro").isChecked(), true);
@@ -316,6 +320,9 @@ async function checkHosted(channel) {
     assert.equal(await reopened.locator("#version").textContent(), `Версия ${updatedVersion}`);
     await reopened.getByText("Черновик восстановлен на этом устройстве.").waitFor();
     assert.equal(await standardParam(reopened).inputValue(), "Черновик перед обновлением");
+    const differences = reopened.locator("#conflict-notice");
+    assert.equal(await differences.getAttribute("class"), "notice");
+    assert.match(await differences.textContent(), /применяются локальные настройки менеджера.*TS-1\./);
     const [guide] = await Promise.all([context.waitForEvent("page"), reopened.getByRole("link", { name: "Помощь" }).click()]);
     await guide.getByRole("heading", { name: /Руководство пользователя/ }).waitFor();
     await dialog(reopened, "#reset", /Восстановить локальные настройки/);

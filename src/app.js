@@ -23,7 +23,7 @@ const state = {
   local: null,
   layer: "corporate",
   base: "",
-  conflict: false,
+  draftEditsPreserved: false,
   catalog: null,
   sections: {},
   documentOptions: documentOptions(),
@@ -298,8 +298,7 @@ async function importCatalog(files) {
     state.base = result.base;
     state.services = result.services;
     state.sections = result.sections;
-    const conflicts = result.usableStandard ? defaultDifferences(next, state.local, state.services) : [];
-    state.conflict = dirty || conflicts.length > 0;
+    state.draftEditsPreserved = dirty;
     if (dirty) {
       state.defaults = overlayDefaults(next, state.defaults);
       renderServices();
@@ -324,11 +323,7 @@ async function importCatalog(files) {
     };
     $("#catalog-summary").textContent = state.catalog.summary;
     notice("#catalog-notice", state.catalog.message, state.catalog.error);
-    showLayer();
-    notice("#conflict-notice", [
-      dirty ? "Сохранены текущие правки предложения. Проверьте их перед применением нового стандарта." : "",
-      conflicts.length ? `Локальные настройки отличаются от стандарта: ${conflicts.slice(0, 8).join(", ")}${conflicts.length > 8 ? ` и ещё ${conflicts.length - 8}` : ""}. Выберите, какой слой применить.` : "",
-    ].filter(Boolean).join(" "), state.conflict);
+    showDefaultsStatus();
     draftChanged();
   } catch (error) {
     notice("#catalog-notice", error.message, true);
@@ -379,18 +374,28 @@ function applyDefaults(settings) {
     : "Настройки применены в этой вкладке. Браузер не подтвердил сохранение. Скачайте файл настроек и загрузите его при следующем открытии.", !saved);
 }
 
-function showLayer() {
-  $("#defaults-layer").textContent = state.layer === "local" ? "Основа предложения — локальные настройки с дополнениями из Confluence."
-    : state.hasStandard ? "Основа предложения — стандарт Confluence." : "Полный стандарт Confluence пока не загружен.";
+function showDefaultsStatus() {
+  const active = state.layer === "local"
+    ? "В предложении применяются локальные настройки менеджера."
+    : state.hasStandard ? "В предложении применяется базовая конфигурация Confluence."
+      : "Полный стандарт Confluence пока не загружен.";
+  const differences = state.hasStandard ? defaultDifferences(state.standard, state.local, state.services) : [];
+  const details = [];
+  if (differences.length) details.push(`Услуги с различиями между локальными настройками и стандартом Confluence: ${differences.join(", ")}.`);
+  if (state.draftEditsPreserved) details.push("Сохранены текущие правки предложения.");
+
+  const status = $("#defaults-layer");
+  status.textContent = active;
+  status.hidden = details.length > 0;
+  notice("#conflict-notice", details.length ? [active, ...details].join(" ") : "");
 }
 
 function applyLayer(layer) {
   state.layer = layer;
   state.defaults = overlayDefaults(state.standard, layer === "local" ? state.local : null);
-  state.conflict = false;
+  state.draftEditsPreserved = false;
   clearDraft();
-  showLayer();
-  notice("#conflict-notice", "");
+  showDefaultsStatus();
   setBusy(state.busy);
   draftChanged();
 }
@@ -493,7 +498,7 @@ try {
   notice("#defaults-notice", "Не удалось прочитать настройки из хранилища браузера. Можно загрузить файл настроек.", true);
 }
 renderOptions();
-showLayer();
+showDefaultsStatus();
 setBusy(false);
 
 function resetBatch() {
@@ -560,16 +565,15 @@ $("#reset-batch").addEventListener("click", () => {
 });
 
 function snapshotProposal() {
-  const { selected, services, overrides, documentOverrides, defaults, standard, hasStandard, layer, base, catalog, conflict } = state;
+  const { selected, services, overrides, documentOverrides, defaults, standard, hasStandard, layer, base, catalog, draftEditsPreserved } = state;
   return {
-    selected, services, overrides, documentOverrides, defaults, standard, hasStandard, layer, base, catalog, conflict,
+    selected, services, overrides, documentOverrides, defaults, standard, hasStandard, layer, base, catalog, draftEditsPreserved,
     client: $("#client").value, title: $("#title").value, sections: state.sections, documentOptions: state.documentOptions,
-    conflictText: $("#conflict-notice").textContent,
   };
 }
 
 function restoreProposal(saved) {
-  const { selected, services, overrides, documentOverrides, defaults, standard, hasStandard, layer, base, catalog, conflict } = saved;
+  const { selected, services, overrides, documentOverrides, defaults, standard, hasStandard, layer, base, catalog } = saved;
   if (!OPTIONS.some(({ code }) => code === selected) || !Array.isArray(services) ||
       !(overrides instanceof Map) || !(documentOverrides instanceof Map) || !defaults?.values || !standard?.values) {
     throw new Error("Сохранённый черновик не удалось прочитать.");
@@ -580,20 +584,20 @@ function restoreProposal(saved) {
   ]));
   Object.assign(state, {
     selected, services, overrides, documentOverrides, defaults: packageSettings(defaults), standard: packageSettings(standard),
-    hasStandard, layer, base, catalog, conflict, documentOptions: documentOptions(saved.documentOptions),
+    hasStandard, layer, base, catalog, documentOptions: documentOptions(saved.documentOptions),
+    draftEditsPreserved: saved.draftEditsPreserved ?? Boolean(saved.conflict && (overrides.size || documentOverrides.size)),
     sections: restoreDocumentSources(saved.sections ?? (previousIntro ? { intro: { data: previousIntro } } : {})),
   });
   $("#client").value = saved.client;
   $("#title").value = saved.title;
   for (const radio of document.querySelectorAll('input[name="proposal-variant"]')) radio.checked = radio.value === selected;
   renderServices();
-  showLayer();
+  showDefaultsStatus();
   if (catalog) {
     $("#catalog-summary").textContent = catalog.summary;
     renderIssues(catalog.issues);
     notice("#catalog-notice", catalog.message, catalog.error);
   }
-  notice("#conflict-notice", saved.conflictText, conflict);
 }
 
 for (const field of ["#client", "#title"]) $(field).addEventListener("input", draftChanged);
