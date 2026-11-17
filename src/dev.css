@@ -1,24 +1,25 @@
 .dev-badge {
-  padding: 4px 9px;
-  border-radius: 5px;
+  padding: var(--space-xs) var(--space-s);
+  border-radius: var(--radius-control);
   background: #ffce73;
   color: #271a06;
-  font-size: 13px;
+  font-size: var(--text-small);
   font-weight: 800;
 }
 .dev-notice {
-  margin: 16px 0 0;
-  padding: 9px 12px;
+  margin: var(--space-l) 0 0;
+  padding: var(--space-s) var(--space-m);
   border-left: 4px solid #bd7315;
+  border-radius: var(--radius-control);
   background: #fff2da;
   color: #432b0c;
 }
 .dev-notice pre { white-space: pre-wrap; overflow-wrap: anywhere; }
-.dev-notice .button { margin-top: 7px; }
-.update-preview { contain: inline-size; display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 7px; margin-top: 8px; font-size: 13px; }
-.update-preview select { max-width: 100%; padding: 4px 6px; font: inherit; color: var(--ink); }
+.dev-notice .button { margin-top: var(--space-s); }
+.update-preview { contain: inline-size; display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: var(--space-s); margin-top: var(--space-s); font-size: var(--text-small); }
+.update-preview select { max-width: 100%; }
 @media (max-width: 620px) {
-  .topbar-inner { flex-wrap: wrap; row-gap: 7px; }
+  .topbar-inner { flex-wrap: wrap; row-gap: var(--space-s); }
   .app-label { flex: 1 1 160px; }
   .topbar .local { display: block; }
 }

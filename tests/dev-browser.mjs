@@ -111,7 +111,7 @@ async function verifyNoticeLayout(page) {
     const box = await notice.boundingBox();
     assert.ok(box && box.x >= row.x - 1);
     assert.ok(Math.abs(box.x + box.width - row.x - row.width) < 1);
-    assert.ok(Math.abs(box.y - row.y - row.height - 13) < 1);
+    assert.ok(Math.abs(box.y - row.y - row.height - 12) < 1);
     if (width === 1280) {
       const title = await page.locator(".intro h1").boundingBox();
       assert.ok(Math.abs(title.y - row.y) < 1);

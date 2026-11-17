@@ -46,7 +46,7 @@
         <div class="actions">
           <a class="button" id="source-link" target="_blank" rel="noopener noreferrer" hidden>Получить актуальные данные</a>
           <input type="file" id="catalog-file" accept=".json,application/json" multiple hidden disabled>
-          <button type="button" id="upload" class="button" disabled>Загрузить JSON</button>
+          <button type="button" id="upload" class="button button-primary" disabled>Загрузить JSON</button>
         </div>
       </div>
       <details id="sources-panel" class="source-panel">
@@ -117,8 +117,8 @@
         </div>
         <div class="actions">
           <button type="button" id="open-palette" class="button" aria-haspopup="dialog">Палитра документа</button>
-          <button type="button" data-format="excel" class="button" disabled>Скачать Excel</button>
-          <button type="button" data-format="word" class="button" disabled>Скачать Word</button>
+          <button type="button" data-format="excel" class="button button-primary" disabled>Скачать Excel</button>
+          <button type="button" data-format="word" class="button button-primary" disabled>Скачать Word</button>
         </div>
       </div>
       <div class="defaults-tools">
@@ -126,7 +126,7 @@
         <p id="defaults-layer"></p>
         <div class="actions">
           <button type="button" id="apply-standard" class="button" disabled>Применить стандарт Confluence</button>
-          <button type="button" id="save-defaults" class="button" disabled>Зафиксировать локально</button>
+          <button type="button" id="save-defaults" class="button button-primary" disabled>Зафиксировать локально</button>
           <button type="button" id="reset" class="button" disabled>Восстановить локальные настройки</button>
           <button type="button" id="export-defaults" class="button" disabled>Скачать настройки</button>
           <button type="button" id="import-defaults" class="button">Загрузить настройки</button>
@@ -176,7 +176,7 @@
         <a href="https://color.adobe.com/create/color-wheel" target="_blank" rel="noopener noreferrer">Adobe Color</a>
       </div>
       <div class="actions palette-actions">
-        <button type="button" class="button" id="save-palette">Зафиксировать локально</button>
+        <button type="button" class="button button-primary" id="save-palette">Зафиксировать локально</button>
         <button type="button" class="button" id="reset-palette" aria-haspopup="dialog" disabled>Сбросить локальную палитру</button>
       </div>
       <div id="palette-success" class="notice palette-success" role="status" hidden>
@@ -199,7 +199,7 @@
       </div>
       <div class="actions palette-actions">
         <button type="button" class="button" data-cancel-reset autofocus>Отмена</button>
-        <button type="button" class="button palette-reset-confirm" id="confirm-palette-reset">Сбросить</button>
+        <button type="button" class="button button-danger" id="confirm-palette-reset">Сбросить</button>
       </div>
     </div>
   </dialog>
