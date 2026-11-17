@@ -5,11 +5,9 @@ import {
 } from "docx";
 import { COMPARISON_HEADERS, CONDITIONS_TITLE } from "./proposal.js";
 import { SECTION_LABELS, SEVERITY_HEADERS } from "./document-sections.js";
+import { TABLE_HEADER, SELECTED_HEADER, SELECTED_FILL } from "./export-palette.js";
 import { linkGroups, plainText } from "./rich-text.js";
 
-const NAVY = "243B56";
-const TEAL = "176054";
-const PALE_TEAL = "E5F3EE";
 const PALE_BLUE = "F3F6FA";
 const WHITE = "FFFFFF";
 const INK = "172B40";
@@ -65,17 +63,17 @@ function comparisonHeadings(headers, widths, selected, keepNext) {
     children: values.map((value, index) => tableCell(value, widths[index], style(index))),
   });
   const marker = makeRow(headers.map((_, index) => index === selected ? "Предложение" : ""),
-    (index) => ({ background: index === selected ? TEAL : PALE_BLUE, white: true, bold: true, center: true, keepNext }),
+    (index) => ({ background: index === selected ? SELECTED_HEADER : PALE_BLUE, white: true, bold: true, center: true, keepNext }),
     { tableHeader: true, cantSplit: true });
   const header = makeRow(headers, (index) => ({
-    background: index === selected ? TEAL : NAVY, white: true, bold: true, center: true, keepNext,
+    background: index === selected ? SELECTED_HEADER : TABLE_HEADER, white: true, bold: true, center: true, keepNext,
   }), { tableHeader: true, cantSplit: true });
   return [marker, header];
 }
 
 function comparisonCellStyle(column, selected, band) {
   return {
-    background: column === selected ? PALE_TEAL : band % 2 ? PALE_BLUE : WHITE,
+    background: column === selected ? SELECTED_FILL : band % 2 ? PALE_BLUE : WHITE,
     bold: column === 0, center: column >= 2,
   };
 }
@@ -154,7 +152,7 @@ function referenceHeader(headers, widths, highlighted = false) {
   return new TableRow({
     tableHeader: true, cantSplit: true,
     children: headers.map((text, column) => tableCell(text, widths[column], {
-      background: highlighted ? TEAL : NAVY, white: true, bold: true, center: true, keepNext: true,
+      background: highlighted ? SELECTED_HEADER : TABLE_HEADER, white: true, bold: true, center: true, keepNext: true,
     })),
   });
 }
@@ -168,7 +166,7 @@ function slaTable({ headers, selectedColumn, highlighted, groups, caption }) {
       cantSplit: cells.every((text) => text.length <= 360 && text.split("\n").length <= 8),
       children: cells.map((text, column) => tableCell(text, widths[column], {
         ...(comparative ? comparisonCellStyle(column, selectedColumn, group) : {
-          background: highlighted ? PALE_TEAL : index % 2 ? PALE_BLUE : WHITE,
+          background: highlighted ? SELECTED_FILL : index % 2 ? PALE_BLUE : WHITE,
           bold: column === 0,
         }),
         keepNext: keepGroup && index < rows.length - 1,

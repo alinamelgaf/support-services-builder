@@ -283,7 +283,7 @@ test("exports optional Word sections and Excel sheets in order with selected SLA
       assert.equal(sheet.getCell("A19").value, "80 — Вопрос");
       assert.equal(sheet.getCell("D2").value, "Предложение");
       assert.equal(sheet.getCell("D4").value, "20 минут");
-      assert.equal(sheet.getCell("D23").fill.fgColor.argb, "FFE5F3EE");
+      assert.equal(sheet.getCell("D23").fill.fgColor.argb, "FFE0F5E4");
       assert.equal(sheet.getCell("C5").value, "Не применимо");
       assert.equal(sheet.getCell("C8").value, "Не регламентируется");
       const breaks = [...(await xlsx.file("xl/worksheets/sheet3.xml").async("string")).matchAll(/<brk id="(\d+)"/g)];
@@ -322,7 +322,7 @@ test("exports optional Word sections and Excel sheets in order with selected SLA
     assert.match(sla, /80 — Вопрос/);
     assert.doesNotMatch(sla, /11 —|90 —|Часы работы|<w:tblGridChange/);
     if (slaMode === "all") {
-      assert.match(sla, /Предложение.*?Extended.*?w:fill="E5F3EE"/);
+      assert.match(sla, /Предложение.*?Extended.*?w:fill="E0F5E4"/);
       assert.doesNotMatch(sla, /✓/);
     } else {
       assert.doesNotMatch(sla, /Standard|Managed Service/);
@@ -418,12 +418,14 @@ test("Word comparative SLA uses the composition table styling and marker for eac
     for (const [offset, code] of packages.entries()) {
       const column = offset + 2;
       assert.equal(markers[column].includes("Предложение"), offset === index);
+      if (offset === index) assert.match(markers[column], /w:fill="007616"/);
       assert.deepEqual(style(markers[column]), style(proposalMarkers[column]));
       assert.ok(headings[column].includes(code) && headings[column].includes(SUPPORT_NAMES[code]));
       assert.deepEqual(style(headings[column]), style(proposalHeadings[column]));
+      assert.ok(headings[column].includes(offset === index ? 'w:fill="007616"' : 'w:fill="234C5E"'));
       for (const row of rows) {
         assert.match(row[column], /<w:jc w:val="center"\/>/);
-        assert.equal(row[column].includes('w:fill="E5F3EE"'), offset === index);
+        assert.equal(row[column].includes('w:fill="E0F5E4"'), offset === index);
         if (offset === index) assert.deepEqual(style(row[column]), style(firstProposalRow[column]));
       }
     }
@@ -444,11 +446,13 @@ test("uses the proposal marker, header and column colors for each selected packa
       const marker = sla.getCell(2, column);
       const proposalMarker = proposalSheet.getCell(proposalHeader - 1, column);
       assert.equal(marker.value, offset === index ? "Предложение" : null);
+      if (offset === index) assert.equal(marker.fill.fgColor.argb, "FF007616");
       assert.deepEqual(marker.style, proposalMarker.style);
       assert.equal(sla.getCell(3, column).value, code + "\n" + SUPPORT_NAMES[code]);
       assert.deepEqual(sla.getCell(3, column).style, proposalSheet.getCell(proposalHeader, column).style);
+      assert.equal(sla.getCell(3, column).fill.fgColor.argb, offset === index ? "FF007616" : "FF234C5E");
       for (let row = 4; row <= sla.rowCount; row += 1) {
-        assert.equal(sla.getCell(row, column).fill.fgColor.argb === "FFE5F3EE", offset === index);
+        assert.equal(sla.getCell(row, column).fill.fgColor.argb === "FFE0F5E4", offset === index);
       }
     }
   }
@@ -481,9 +485,9 @@ test("exports three sequential SLA tables with every original value and highligh
     assert.equal(sheet.getCell(caption, 1).text, firstLine + "\n" + secondLine);
     assert.match(sla, new RegExp(`>${firstLine}</w:t>.*?<w:br/>.*?>${secondLine}</w:t>`));
     for (const header of severityHeaders) assert.ok(tables[index].includes(header));
-    assert.equal(tables[index].includes('w:fill="E5F3EE"'), code === "Extended");
-    assert.equal(sheet.getCell(caption + 2, 1).fill.fgColor.argb === "FFE5F3EE", code === "Extended");
-    assert.equal(sheet.getCell(caption + 2, 3).fill.fgColor.argb === "FFE5F3EE", code === "Extended");
+    assert.equal(tables[index].includes('w:fill="E0F5E4"'), code === "Extended");
+    assert.equal(sheet.getCell(caption + 2, 1).fill.fgColor.argb === "FFE0F5E4", code === "Extended");
+    assert.equal(sheet.getCell(caption + 2, 3).fill.fgColor.argb === "FFE0F5E4", code === "Extended");
     const expected = result.sections.sla.data.filter(({ support }) => support === code).map(({ values }) => values);
     const rows = [...tables[index].matchAll(/<w:tr>.*?<\/w:tr>/gs)].map(([row]) => row).slice(1);
     assert.equal(rows.length, 5);

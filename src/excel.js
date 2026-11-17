@@ -2,11 +2,12 @@ import ExcelJS from "exceljs";
 import JSZip from "jszip";
 import { COMPARISON_HEADERS, CONDITIONS_TITLE } from "./proposal.js";
 import { SECTION_LABELS, SEVERITY_HEADERS } from "./document-sections.js";
+import { TABLE_HEADER, SELECTED_HEADER, SELECTED_FILL } from "./export-palette.js";
 import { flattenRich } from "./rich-text.js";
 
-const NAVY = "FF243B56";
-const TEAL = "FF176054";
-const PALE_TEAL = "FFE5F3EE";
+const NAVY = "FF" + TABLE_HEADER;
+const GREEN = "FF" + SELECTED_HEADER;
+const PALE_GREEN = "FF" + SELECTED_FILL;
 const PALE_BLUE = "FFF3F6FA";
 const WHITE = "FFFFFFFF";
 const INK = "FF183246";
@@ -28,8 +29,8 @@ function header(cell, value, background = NAVY) {
 
 function markProposalColumn(sheet, headerRow, selected, heading) {
   sheet.getRow(headerRow - 1).height = 23;
-  header(sheet.getCell(headerRow - 1, selected + 1), "Предложение", TEAL);
-  header(sheet.getCell(headerRow, selected + 1), heading, TEAL);
+  header(sheet.getCell(headerRow - 1, selected + 1), "Предложение", GREEN);
+  header(sheet.getCell(headerRow, selected + 1), heading, GREEN);
 }
 
 function layout(workbook, name, title, widths, headers, headerRow, {
@@ -127,7 +128,7 @@ function writeRows(sheet, rows, widths, start, { selected = -1, groupSize = 1, h
         cell.value = cellValue(piece?.segments ?? [], col === 0);
         cell.font = { ...FONT, bold: col === 0 };
         cell.alignment = { vertical: "middle", horizontal: selected >= 0 && col >= 2 ? "center" : "left", wrapText: true };
-        cell.fill = fill(highlighted || col === selected ? PALE_TEAL : Math.floor(index / groupSize) % 2 ? PALE_BLUE : WHITE);
+        cell.fill = fill(highlighted || col === selected ? PALE_GREEN : Math.floor(index / groupSize) % 2 ? PALE_BLUE : WHITE);
         if (part === 0 && index % groupSize === 0) cell.border = { top: { style: "thin", color: { argb: GRAY } } };
         height = Math.max(height, 8 + 15 * (piece?.lines ?? 1));
       });
@@ -185,9 +186,9 @@ function addSlaSheet(workbook, tables) {
     const headerRow = caption ? captionRow + 1 : 3;
     if (caption) {
       sheet.mergeCells(`A${captionRow}:E${captionRow}`);
-      header(sheet.getCell(captionRow, 1), caption, highlighted ? TEAL : NAVY);
+      header(sheet.getCell(captionRow, 1), caption, highlighted ? GREEN : NAVY);
       sheet.getRow(captionRow).height = 36;
-      headers.forEach((label, col) => header(sheet.getCell(headerRow, col + 1), label, highlighted ? TEAL : NAVY));
+      headers.forEach((label, col) => header(sheet.getCell(headerRow, col + 1), label, highlighted ? GREEN : NAVY));
       sheet.getRow(headerRow).height = 32;
     } else {
       markProposalColumn(sheet, headerRow, selectedColumn, headings[selectedColumn]);
