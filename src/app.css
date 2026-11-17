@@ -135,7 +135,8 @@ dialog .service-id { margin: 0 0 5px; }
 .service-copy li > p { margin-top: 2px; }
 
 #palette-dialog { width: min(680px, calc(100% - 26px)); }
-#palette-dialog .panel-heading { align-items: center; }
+#palette-reset-dialog { width: min(460px, calc(100% - 26px)); }
+:is(#palette-dialog, #palette-reset-dialog) .panel-heading { align-items: center; }
 .palette-close { min-width: 40px; font-size: 20px; line-height: 1; }
 .palette-body { padding: 14px clamp(12px, 3vw, 22px) 20px; }
 .palette-choices { display: flex; align-items: center; gap: clamp(5px, 1.5vw, 12px); }
@@ -159,6 +160,10 @@ dialog .service-id { margin: 0 0 5px; }
 #palette-preview tr:nth-child(even) td { background: var(--preview-band); }
 #palette-preview tr td:last-child { background: var(--preview-selected); }
 .palette-warning { color: #6d4712; background: #fff4dc; font-size: 13px; }
+.palette-success { display: flex; align-items: baseline; gap: 8px; color: var(--green); background: var(--green-pale); }
+.palette-success p { margin-top: 2px; }
+.button.palette-reset-confirm { background: #862f2a; color: white; border-color: #862f2a; }
+.button.palette-reset-confirm:hover { background: #69231f; border-color: #69231f; }
 .palette-links { display: flex; flex-wrap: wrap; align-items: baseline; gap: 5px 12px; margin-top: 14px; font-size: 13px; }
 .palette-links h3 { margin: 0; }
 .palette-actions { margin-top: 12px; }

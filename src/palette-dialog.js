@@ -1,12 +1,28 @@
-import { documentPalette, hexColor, MIN_CONTRAST, resolveDocumentPalette, writeLocalPalette } from "./export-palette.js";
+import {
+  documentPalette, hasLocalPalette, hexColor, MIN_CONTRAST, resetLocalPalette, resolveDocumentPalette, writeLocalPalette,
+} from "./export-palette.js";
 
 const COLOR_BLOCKS = [["main", "Основной цвет"], ["proposal", "Цвет предложения"]];
 
 export function setupPaletteDialog({ getPalette, changePalette, report }) {
   const dialog = document.querySelector("#palette-dialog");
+  const confirmation = document.querySelector("#palette-reset-dialog");
   const preview = dialog.querySelector("#palette-preview");
   const save = dialog.querySelector("#save-palette");
+  const reset = dialog.querySelector("#reset-palette");
+  const success = dialog.querySelector("#palette-success");
   const blocks = {};
+
+  function clearFeedback() {
+    success.hidden = true;
+    report("");
+  }
+
+  function showSuccess(title, detail) {
+    success.querySelector("#palette-success-heading").textContent = title;
+    success.querySelector("#palette-success-detail").textContent = detail;
+    success.hidden = false;
+  }
 
   function render(edited, clearErrors = false) {
     const palette = getPalette();
@@ -43,11 +59,11 @@ export function setupPaletteDialog({ getPalette, changePalette, report }) {
   }
 
   function updateColor(key, property, value, edited) {
+    clearFeedback();
     const current = getPalette();
     const next = { ...current, mode: "custom", [key]: { ...current[key], [property]: value ?? current[key][property] } };
     if (next.mode !== current.mode || next[key][property] !== current[key][property]) {
       changePalette(next);
-      report("");
     }
     render(edited);
   }
@@ -89,26 +105,52 @@ export function setupPaletteDialog({ getPalette, changePalette, report }) {
   for (const radio of dialog.querySelectorAll('input[name="palette-mode"]')) {
     radio.addEventListener("change", () => {
       changePalette(documentPalette({ ...getPalette(), mode: radio.value }));
-      report("");
+      clearFeedback();
       render(undefined, true);
     });
   }
   document.querySelector("#open-palette").addEventListener("click", () => {
+    success.hidden = true;
+    reset.disabled = true;
+    try {
+      reset.disabled = !hasLocalPalette(window.localStorage);
+    } catch {
+      report("Не удалось проверить локально сохранённую палитру.", true);
+    }
     render(undefined, true);
     dialog.showModal();
   });
   dialog.querySelector("#close-palette").addEventListener("click", () => dialog.close());
 
-  function saveLocally(value, message) {
+  save.addEventListener("click", () => {
+    clearFeedback();
     try {
-      writeLocalPalette(window.localStorage, value);
-      report(message);
+      writeLocalPalette(window.localStorage, getPalette());
     } catch {
-      report("Браузер не подтвердил изменение локальной палитры.", true);
+      report("Не удалось сохранить палитру локально.", true);
+      return;
     }
+    reset.disabled = false;
+    showSuccess("Палитра сохранена локально", "Выбранная палитра будет применяться по умолчанию к новым предложениям.");
+  });
+
+  reset.addEventListener("click", () => confirmation.showModal());
+  for (const button of confirmation.querySelectorAll("[data-cancel-reset]")) {
+    button.addEventListener("click", () => confirmation.close());
   }
-  save.addEventListener("click", () => saveLocally(getPalette(), "Палитра сохранена для новых предложений в этом браузере."));
-  dialog.querySelector("#reset-palette").addEventListener("click", () => {
-    saveLocally(documentPalette(), "Для новых предложений восстановлена базовая палитра. Текущее предложение сохраняет свои цвета.");
+  confirmation.querySelector("#confirm-palette-reset").addEventListener("click", () => {
+    clearFeedback();
+    confirmation.close();
+    try {
+      resetLocalPalette(window.localStorage);
+    } catch {
+      report("Не удалось сбросить локальную палитру.", true);
+      return;
+    }
+    changePalette(documentPalette());
+    render(undefined, true);
+    reset.disabled = true;
+    save.focus();
+    showSuccess("Локальная палитра сброшена", "Применена базовая палитра.");
   });
 }

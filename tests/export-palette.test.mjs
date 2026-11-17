@@ -1,6 +1,8 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { documentPalette, hexColor, readLocalPalette, resolveDocumentPalette, writeLocalPalette } from "../src/export-palette.js";
+import {
+  documentPalette, hasLocalPalette, hexColor, readLocalPalette, resetLocalPalette, resolveDocumentPalette, writeLocalPalette,
+} from "../src/export-palette.js";
 
 test("keeps the fixed base palette and normalizes missing or malformed draft values", () => {
   const base = documentPalette();
@@ -40,11 +42,17 @@ test("stores the local palette separately and confirms writes and reset", () => 
   const storage = { getItem: (key) => values.get(key) ?? null, setItem: values.set.bind(values), removeItem: values.delete.bind(values) };
   const custom = documentPalette({ mode: "custom", main: { background: "#11CC88", textMode: "auto" } });
   assert.deepEqual(readLocalPalette(storage), documentPalette());
+  assert.equal(hasLocalPalette(storage), false);
+  writeLocalPalette(storage, documentPalette());
+  assert.equal(hasLocalPalette(storage), true);
+  assert.deepEqual(readLocalPalette(storage), documentPalette());
   writeLocalPalette(storage, custom);
   assert.deepEqual(readLocalPalette(storage), custom);
   assert.throws(() => writeLocalPalette({ ...storage, setItem() {} }, { ...custom, main: { background: "#000000" } }));
-  assert.throws(() => writeLocalPalette({ ...storage, removeItem() {} }, documentPalette()));
-  writeLocalPalette(storage, documentPalette());
+  assert.throws(() => resetLocalPalette({ ...storage, removeItem() {} }));
+  assert.deepEqual(readLocalPalette(storage), custom);
+  resetLocalPalette(storage);
+  assert.equal(hasLocalPalette(storage), false);
   assert.deepEqual(readLocalPalette(storage), documentPalette());
   assert.deepEqual([...values], [["other-settings", "preserved"]]);
 });

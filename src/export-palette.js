@@ -76,14 +76,17 @@ export function readLocalPalette(storage) {
   return documentPalette(saved === null ? undefined : JSON.parse(saved));
 }
 
+export function hasLocalPalette(storage) {
+  return storage.getItem(STORAGE_KEY) !== null;
+}
+
 export function writeLocalPalette(storage, value) {
-  const palette = documentPalette(value);
-  if (palette.mode === "base") {
-    storage.removeItem(STORAGE_KEY);
-    if (storage.getItem(STORAGE_KEY) !== null) throw new Error("Проверьте хранилище браузера.");
-    return;
-  }
-  const saved = JSON.stringify(palette);
+  const saved = JSON.stringify(documentPalette(value));
   storage.setItem(STORAGE_KEY, saved);
   if (storage.getItem(STORAGE_KEY) !== saved) throw new Error("Проверьте хранилище браузера.");
+}
+
+export function resetLocalPalette(storage) {
+  storage.removeItem(STORAGE_KEY);
+  if (hasLocalPalette(storage)) throw new Error("Проверьте хранилище браузера.");
 }
