@@ -18,9 +18,9 @@ const sectionNames = ["Матрица SLA", "Уровни критичности
 const included = { sla: true, severity: true, assumptions: true, glossary: true, raci: true };
 const severityHeaders = ["10 — Критический", "20 — Значительный", "30 — Незначительный", "80 — Вопрос"];
 
-function proposal(result, selected, document) {
+function proposal(result, selected, document, palette) {
   return buildProposal(result.services, {
-    selected, document, sections: result.sections, defaults: result.standard.values,
+    selected, document, palette, sections: result.sections, defaults: result.standard.values,
     documentDefaults: result.standard.includedInDocument, confluenceBases: [BASE],
   });
 }
@@ -46,6 +46,40 @@ test("recognizes the two SLA tables without working hours in a complete paginate
   const cql = url.searchParams.get("cql");
   for (const key of ["sla", "assumptions", "glossary"]) assert.ok(cql.includes(sources.labels[key]));
   assert.ok(!cql.includes(sources.labels.raci));
+});
+
+test("exports independent background and text colors in every SLA layout and keeps table data intact", async () => {
+  const result = read();
+  const palette = { mode: "custom", main: { background: "#F7DC94", textMode: "auto" },
+    proposal: { background: "#683CA0", textMode: "custom", textColor: "#FFF0DC" } };
+  for (const [slaMode, slaFormat] of [["selected", "comparison"], ["all", "comparison"], ["all", "separate"]]) {
+    const options = { included, slaMode, slaFormat };
+    const model = proposal(result, "Extended", options, palette);
+    const baseline = proposal(result, "Extended", options);
+    assert.deepEqual(model.rows, baseline.rows);
+    assert.deepEqual(model.sections, baseline.sections);
+    const [bytes, docx] = await Promise.all([generateExcel(model), generateWord(model)]);
+    const workbook = new ExcelJS.Workbook();
+    await workbook.xlsx.load(bytes);
+    const zip = await JSZip.loadAsync(await docx.arrayBuffer());
+    const xml = await zip.file("word/document.xml").async("string");
+    const sla = [...xml.matchAll(/<w:tbl>.*?<\/w:tbl>/gs)].map(([value]) => value).slice(1, 1 + model.sections.sla.length);
+    const sheet = workbook.getWorksheet("Матрица SLA");
+    for (const [index, table] of model.sections.sla.entries()) {
+      const row = 3 + 8 * index;
+      const column = table.selectedColumn === undefined ? 1 : table.selectedColumn + 1;
+      const highlighted = table.highlighted || table.selectedColumn !== undefined;
+      const { font, fill } = sheet.getCell(row, column);
+      assert.equal(fill.fgColor.argb, highlighted ? "FF683CA0" : "FFF7DC94");
+      assert.equal(font.color.argb, highlighted ? "FFFFF0DC" : "FF000000");
+      assert.match(sla[index], highlighted ? /w:fill="683CA0".*?w:color w:val="FFF0DC"/s : /w:fill="F7DC94".*?w:color w:val="000000"/s);
+      assert.equal(sla[index].includes('w:fill="EDE8F4"'), highlighted);
+      const cell = sheet.getCell(row + 1, column);
+      assert.equal(cell.fill.fgColor.argb === "FFEDE8F4", highlighted);
+    }
+    assert.equal(workbook.getWorksheet("Уровни критичности").getCell("A2").font.color.argb, "FF000000");
+    assert.ok(!xml.includes('w:fill="234C5E"'));
+  }
 });
 
 test("recognizes every source structurally with no settings, including separately exported SLA tables", () => {
@@ -418,11 +452,11 @@ test("Word comparative SLA uses the composition table styling and marker for eac
     for (const [offset, code] of packages.entries()) {
       const column = offset + 2;
       assert.equal(markers[column].includes("Предложение"), offset === index);
-      if (offset === index) assert.match(markers[column], /w:fill="007616"/);
+      if (offset === index) assert.match(markers[column], /w:fill="00AD21"/);
       assert.deepEqual(style(markers[column]), style(proposalMarkers[column]));
       assert.ok(headings[column].includes(code) && headings[column].includes(SUPPORT_NAMES[code]));
       assert.deepEqual(style(headings[column]), style(proposalHeadings[column]));
-      assert.ok(headings[column].includes(offset === index ? 'w:fill="007616"' : 'w:fill="234C5E"'));
+      assert.ok(headings[column].includes(offset === index ? 'w:fill="00AD21"' : 'w:fill="234C5E"'));
       for (const row of rows) {
         assert.match(row[column], /<w:jc w:val="center"\/>/);
         assert.equal(row[column].includes('w:fill="E0F5E4"'), offset === index);
@@ -446,11 +480,11 @@ test("uses the proposal marker, header and column colors for each selected packa
       const marker = sla.getCell(2, column);
       const proposalMarker = proposalSheet.getCell(proposalHeader - 1, column);
       assert.equal(marker.value, offset === index ? "Предложение" : null);
-      if (offset === index) assert.equal(marker.fill.fgColor.argb, "FF007616");
+      if (offset === index) assert.equal(marker.fill.fgColor.argb, "FF00AD21");
       assert.deepEqual(marker.style, proposalMarker.style);
       assert.equal(sla.getCell(3, column).value, code + "\n" + SUPPORT_NAMES[code]);
       assert.deepEqual(sla.getCell(3, column).style, proposalSheet.getCell(proposalHeader, column).style);
-      assert.equal(sla.getCell(3, column).fill.fgColor.argb, offset === index ? "FF007616" : "FF234C5E");
+      assert.equal(sla.getCell(3, column).fill.fgColor.argb, offset === index ? "FF00AD21" : "FF234C5E");
       for (let row = 4; row <= sla.rowCount; row += 1) {
         assert.equal(sla.getCell(row, column).fill.fgColor.argb === "FFE0F5E4", offset === index);
       }

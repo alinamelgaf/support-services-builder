@@ -134,6 +134,43 @@ dialog .service-id { margin: 0 0 5px; }
 .service-copy :is(ul, ol) { margin: 5px 0; padding-left: 26px; }
 .service-copy li > p { margin-top: 2px; }
 
+#palette-dialog { width: min(680px, calc(100% - 26px)); }
+#palette-dialog .panel-heading { align-items: center; }
+.palette-close { min-width: 40px; font-size: 20px; line-height: 1; }
+.palette-body { padding: 14px clamp(12px, 3vw, 22px) 20px; }
+.palette-choices { display: flex; align-items: center; gap: clamp(5px, 1.5vw, 12px); }
+.palette-choices label { display: inline-flex; align-items: center; gap: 4px; white-space: nowrap; font-size: 13px; cursor: pointer; }
+#palette-colors { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; margin-top: 14px; }
+.palette-card { padding: 8px 10px 12px; border: 1px solid var(--line); border-radius: 7px; }
+.palette-card > legend { padding-inline: 4px; margin: 0; }
+.palette-inputs { display: grid; grid-template-columns: 42px minmax(0, 8rem); gap: 4px 8px; }
+.palette-inputs input { width: 100%; height: 34px; border: 1px solid #c9d5e2; border-radius: 6px; color: var(--ink); background: white; }
+.palette-inputs [data-picker] { padding: 3px; cursor: pointer; }
+.palette-inputs [data-hex] { padding: 4px 7px; font-family: Consolas, monospace; }
+.palette-inputs [aria-invalid=true] { border-color: #b4473e; }
+.palette-invalid { grid-column: 1 / -1; color: #862f2a; }
+.palette-text { margin-top: 9px; }
+.palette-text .palette-inputs { margin-top: 8px; }
+#palette-preview { min-width: 0; font: 13px Arial, sans-serif; color: #172b40; }
+#palette-preview :is(th, td) { padding: 6px 8px; text-align: center; }
+#palette-preview th { position: static; background: var(--preview-main); color: var(--preview-main-text); }
+#palette-preview th:last-child { background: var(--preview-proposal); color: var(--preview-proposal-text); }
+#palette-preview td { background: #fff; }
+#palette-preview tr:nth-child(even) td { background: var(--preview-band); }
+#palette-preview tr td:last-child { background: var(--preview-selected); }
+.palette-warning { color: #6d4712; background: #fff4dc; font-size: 13px; }
+.palette-links { display: flex; flex-wrap: wrap; align-items: baseline; gap: 5px 12px; margin-top: 14px; font-size: 13px; }
+.palette-links h3 { margin: 0; }
+.palette-actions { margin-top: 12px; }
+.proposal-heading { flex-wrap: wrap; }
+
+@media (max-width: 560px) {
+  #palette-colors { grid-template-columns: 1fr; }
+}
+@media (max-width: 340px) {
+  .palette-text .palette-choices label { font-size: 11px; }
+}
+
 .document-options { margin-top: 18px; }
 .document-sections { display: grid; gap: 7px; }
 .document-sections label { display: inline-flex; align-items: baseline; gap: 7px; font-size: 14px; }

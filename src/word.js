@@ -5,12 +5,11 @@ import {
 } from "docx";
 import { COMPARISON_HEADERS, CONDITIONS_TITLE } from "./proposal.js";
 import { SECTION_LABELS, SEVERITY_HEADERS } from "./document-sections.js";
-import { TABLE_HEADER, SELECTED_HEADER, SELECTED_FILL } from "./export-palette.js";
+import { resolveDocumentPalette } from "./export-palette.js";
 import { linkGroups, plainText } from "./rich-text.js";
 
-const PALE_BLUE = "F3F6FA";
-const WHITE = "FFFFFF";
-const INK = "172B40";
+const WHITE = "#FFFFFF";
+const INK = "#172B40";
 const WIDTHS = [1190, 2494, 2211, 2211, 2211];
 const BORDER = { style: BorderStyle.SINGLE, size: 4, color: "D9D9D9" };
 
@@ -32,14 +31,14 @@ function children(runs) {
   return result;
 }
 
-function tableCell(text, width, { background, white = false, bold = false, center = false, keepNext, numbering }) {
+function tableCell(text, width, { background, text: color = INK, bold = false, center = false, keepNext, numbering }) {
   const body = typeof text === "string" ? [{
-    children: textRuns({ text, bold }, { size: 20, color: white ? WHITE : INK }),
+    children: textRuns({ text, bold }, { size: 20, color: color.slice(1) }),
   }] : [...renderBlocks(text, numbering)];
   return new TableCell({
     width: { size: width, type: WidthType.DXA },
     verticalAlign: VerticalAlignTable.CENTER,
-    shading: { type: ShadingType.CLEAR, fill: background },
+    shading: { type: ShadingType.CLEAR, fill: background.slice(1) },
     children: (body.length ? body : [{}]).map((paragraph) => new Paragraph({
       ...paragraph, alignment: center ? AlignmentType.CENTER : AlignmentType.LEFT,
       spacing: { before: 40, after: 40, line: 268 }, keepNext,
@@ -57,38 +56,38 @@ function fixedTable(rows, widths) {
   });
 }
 
-function comparisonHeadings(headers, widths, selected, keepNext) {
+function comparisonHeadings(headers, widths, selected, palette, keepNext) {
   const makeRow = (values, style, options) => new TableRow({
     ...options,
     children: values.map((value, index) => tableCell(value, widths[index], style(index))),
   });
   const marker = makeRow(headers.map((_, index) => index === selected ? "Предложение" : ""),
-    (index) => ({ background: index === selected ? SELECTED_HEADER : PALE_BLUE, white: true, bold: true, center: true, keepNext }),
+    (index) => ({ ...(index === selected ? palette.proposal : { background: palette.band }), bold: true, center: true, keepNext }),
     { tableHeader: true, cantSplit: true });
   const header = makeRow(headers, (index) => ({
-    background: index === selected ? SELECTED_HEADER : TABLE_HEADER, white: true, bold: true, center: true, keepNext,
+    ...(index === selected ? palette.proposal : palette.main), bold: true, center: true, keepNext,
   }), { tableHeader: true, cantSplit: true });
   return [marker, header];
 }
 
-function comparisonCellStyle(column, selected, band) {
+function comparisonCellStyle(column, selected, band, palette) {
   return {
-    background: column === selected ? SELECTED_FILL : band % 2 ? PALE_BLUE : WHITE,
+    background: column === selected ? palette.selectedFill : band % 2 ? palette.band : WHITE,
     bold: column === 0, center: column >= 2,
   };
 }
 
-function composition(proposal) {
+function composition(proposal, palette) {
   const selected = 2 + proposal.selectedIndex;
   const rows = proposal.rows.map(({ id, name, values }, rowIndex) => {
     const cells = [id, name, ...values];
     const short = cells.every((value) => value.length <= 300 && value.split("\n").length <= 10);
     return new TableRow({
       cantSplit: short,
-      children: cells.map((value, column) => tableCell(value, WIDTHS[column], comparisonCellStyle(column, selected, rowIndex))),
+      children: cells.map((value, column) => tableCell(value, WIDTHS[column], comparisonCellStyle(column, selected, rowIndex, palette))),
     });
   });
-  return fixedTable([...comparisonHeadings(COMPARISON_HEADERS, WIDTHS, selected), ...rows], WIDTHS);
+  return fixedTable([...comparisonHeadings(COMPARISON_HEADERS, WIDTHS, selected, palette), ...rows], WIDTHS);
 }
 
 function* renderBlocks(blocks, numbering, depth = 0, prefix) {
@@ -148,16 +147,16 @@ function serviceSections(rows, numbering) {
 const sectionHeading = (key) => new Paragraph({ heading: HeadingLevel.HEADING_1, text: SECTION_LABELS[key], keepNext: true });
 const subheading = (text) => new Paragraph({ heading: HeadingLevel.HEADING_2, children: textRuns({ text }), keepNext: true });
 
-function referenceHeader(headers, widths, highlighted = false) {
+function referenceHeader(headers, widths, colors) {
   return new TableRow({
     tableHeader: true, cantSplit: true,
     children: headers.map((text, column) => tableCell(text, widths[column], {
-      background: highlighted ? SELECTED_HEADER : TABLE_HEADER, white: true, bold: true, center: true, keepNext: true,
+      ...colors, bold: true, center: true, keepNext: true,
     })),
   });
 }
 
-function slaTable({ headers, selectedColumn, highlighted, groups, caption }) {
+function slaTable({ headers, selectedColumn, highlighted, groups, caption }, palette) {
   const widths = caption ? [2517, 1950, 1950, 1950, 1950] : [1930, 2457, 1976, 1977, 1977];
   const comparative = selectedColumn !== undefined;
   const rows = groups.flatMap((rows, group) => {
@@ -165,8 +164,8 @@ function slaTable({ headers, selectedColumn, highlighted, groups, caption }) {
     return rows.map((cells, index) => new TableRow({
       cantSplit: cells.every((text) => text.length <= 360 && text.split("\n").length <= 8),
       children: cells.map((text, column) => tableCell(text, widths[column], {
-        ...(comparative ? comparisonCellStyle(column, selectedColumn, group) : {
-          background: highlighted ? SELECTED_FILL : index % 2 ? PALE_BLUE : WHITE,
+        ...(comparative ? comparisonCellStyle(column, selectedColumn, group, palette) : {
+          background: highlighted ? palette.selectedFill : index % 2 ? palette.band : WHITE,
           bold: column === 0,
         }),
         keepNext: keepGroup && index < rows.length - 1,
@@ -174,35 +173,35 @@ function slaTable({ headers, selectedColumn, highlighted, groups, caption }) {
     }));
   });
   const headings = comparative
-    ? comparisonHeadings([...headers.slice(0, 2), ...COMPARISON_HEADERS.slice(2)], widths, selectedColumn, true)
-    : [referenceHeader(headers, widths, highlighted)];
+    ? comparisonHeadings([...headers.slice(0, 2), ...COMPARISON_HEADERS.slice(2)], widths, selectedColumn, palette, true)
+    : [referenceHeader(headers, widths, highlighted ? palette.proposal : palette.main)];
   return fixedTable([...headings, ...rows], widths);
 }
 
-function referenceTable(headers, widths, records, numbering) {
+function referenceTable(headers, widths, records, numbering, palette) {
   const rows = records.map((values, index) => new TableRow({
     cantSplit: values.every((value) => typeof value === "string"
       ? value.length <= 300 : plainText(value).length <= 450 && value.length <= 6),
     children: values.map((value, column) => tableCell(value, widths[column], {
-      background: index % 2 ? PALE_BLUE : WHITE, bold: column === 0, numbering,
+      background: index % 2 ? palette.band : WHITE, bold: column === 0, numbering,
     })),
   }));
-  return fixedTable([referenceHeader(headers, widths), ...rows], widths);
+  return fixedTable([referenceHeader(headers, widths, palette.main), ...rows], widths);
 }
 
-function referenceSections(sections, numbering) {
+function referenceSections(sections, numbering, palette) {
   const content = [];
   const paragraphs = (blocks) => [...renderBlocks(blocks, numbering)].map((paragraph) => new Paragraph(paragraph));
   if (sections.sla) {
     content.push(sectionHeading("sla"));
     for (const table of sections.sla) {
       if (table.caption) content.push(subheading(table.caption));
-      content.push(slaTable(table));
+      content.push(slaTable(table, palette));
     }
   }
   if (sections.severity) {
     content.push(sectionHeading("severity"), referenceTable(SEVERITY_HEADERS, [760, 2300, 2360, 4897],
-      sections.severity.map(({ code, name, short, description }) => [code, name, short, description]), numbering));
+      sections.severity.map(({ code, name, short, description }) => [code, name, short, description]), numbering, palette));
   }
   if (sections.assumptions) {
     content.push(sectionHeading("assumptions"));
@@ -215,12 +214,13 @@ function referenceSections(sections, numbering) {
   }
   if (sections.glossary) {
     content.push(sectionHeading("glossary"), referenceTable(["Термин RU", "Term ENG", "Определение RU"], [2000, 1800, 6517],
-      sections.glossary.map(({ term, english, definition }) => [term, english, definition]), numbering));
+      sections.glossary.map(({ term, english, definition }) => [term, english, definition]), numbering, palette));
   }
   return content;
 }
 
 export async function generateWord(proposal) {
+  const palette = resolveDocumentPalette(proposal.palette);
   const numbering = [];
   const { sections } = proposal;
   const content = [
@@ -228,18 +228,18 @@ export async function generateWord(proposal) {
     ...(proposal.clientLine ? [new Paragraph({ text: proposal.clientLine, keepNext: true })] : []),
     ...(sections.intro ? [...renderBlocks(sections.intro, numbering)].map((paragraph) => new Paragraph(paragraph)) : []),
     new Paragraph({ heading: HeadingLevel.HEADING_1, text: "Состав вариантов поддержки", keepNext: true }),
-    composition(proposal),
+    composition(proposal, palette),
     ...(proposal.rows.length ? [
       new Paragraph({ heading: HeadingLevel.HEADING_1, text: "Описания услуг", keepNext: true }),
       ...serviceSections(proposal.rows, numbering),
     ] : []),
-    ...referenceSections(sections, numbering),
+    ...referenceSections(sections, numbering, palette),
   ];
   const document = new Document({
     creator: "Support Services Builder", title: proposal.title, numbering: { config: numbering },
     styles: { default: {
       document: {
-        run: { font: "Arial", size: 22, color: INK },
+        run: { font: "Arial", size: 22, color: INK.slice(1) },
         paragraph: { spacing: { after: 120, line: 276 }, widowControl: true },
       },
       title: { run: { font: "Arial", size: 44, bold: true, color: "000000" }, paragraph: { spacing: { after: 160 } } },

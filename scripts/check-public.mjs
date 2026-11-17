@@ -46,7 +46,10 @@ async function scan(path) {
   for (const phrase of deny) if (normalized.includes(phrase)) throw new Error(`Private denylist match in ${path}`);
   for (const [reason, pattern] of suspicious) if (pattern.test(text)) throw new Error(`${reason} match in ${path}`);
   if (/^(?:src|config|pwa|tests|examples)\//.test(path)) {
-    for (const [url] of text.matchAll(/https?:\/\/[a-z\d][a-z\d.-]*/gi)) {
+    const source = path === "src/page.html" ? text
+      .replace('href="https://get-color.ru/#000000" target="_blank" rel="noopener noreferrer"', "")
+      .replace('href="https://color.adobe.com/create/color-wheel" target="_blank" rel="noopener noreferrer"', "") : text;
+    for (const [url] of source.matchAll(/https?:\/\/[a-z\d][a-z\d.-]*/gi)) {
       const host = new URL(url).hostname;
       if (!(host.endsWith(".invalid") || host === "127.0.0.1" || xmlHosts.has(host))) throw new Error(`Unexpected host literal in ${path}`);
     }

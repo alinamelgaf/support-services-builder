@@ -2,13 +2,9 @@ import ExcelJS from "exceljs";
 import JSZip from "jszip";
 import { COMPARISON_HEADERS, CONDITIONS_TITLE } from "./proposal.js";
 import { SECTION_LABELS, SEVERITY_HEADERS } from "./document-sections.js";
-import { TABLE_HEADER, SELECTED_HEADER, SELECTED_FILL } from "./export-palette.js";
+import { resolveDocumentPalette } from "./export-palette.js";
 import { flattenRich } from "./rich-text.js";
 
-const NAVY = "FF" + TABLE_HEADER;
-const GREEN = "FF" + SELECTED_HEADER;
-const PALE_GREEN = "FF" + SELECTED_FILL;
-const PALE_BLUE = "FFF3F6FA";
 const WHITE = "FFFFFFFF";
 const INK = "FF183246";
 const GRAY = "FFDCE4ED";
@@ -18,22 +14,23 @@ const MATRIX_WIDTHS = [14, 32, 25, 25, 25];
 const LINK_COLOR = "FF0563C1";
 const FONT = { name: "Arial", size: 10, color: { argb: INK } };
 const fill = (argb) => ({ type: "pattern", pattern: "solid", fgColor: { argb } });
+const argb = (hex) => "FF" + hex.slice(1);
 const runs = (text) => [{ text }];
 
-function header(cell, value, background = NAVY) {
+function header(cell, value, { background, text }) {
   cell.value = value;
-  cell.font = { ...FONT, bold: true, color: { argb: WHITE } };
-  cell.fill = fill(background);
+  cell.font = { ...FONT, bold: true, color: { argb: argb(text) } };
+  cell.fill = fill(argb(background));
   cell.alignment = { horizontal: "center", vertical: "middle", wrapText: true };
 }
 
-function markProposalColumn(sheet, headerRow, selected, heading) {
+function markProposalColumn(sheet, headerRow, selected, heading, palette) {
   sheet.getRow(headerRow - 1).height = 23;
-  header(sheet.getCell(headerRow - 1, selected + 1), "Предложение", GREEN);
-  header(sheet.getCell(headerRow, selected + 1), heading, GREEN);
+  header(sheet.getCell(headerRow - 1, selected + 1), "Предложение", palette.proposal);
+  header(sheet.getCell(headerRow, selected + 1), heading, palette.proposal);
 }
 
-function layout(workbook, name, title, widths, headers, headerRow, {
+function layout(workbook, name, title, widths, headers, headerRow, palette, {
   comparison = false, freezeRows = true, freezeColumns = !comparison,
 } = {}) {
   const lastColumn = String.fromCharCode(64 + widths.length);
@@ -43,7 +40,7 @@ function layout(workbook, name, title, widths, headers, headerRow, {
     views: [xSplit || ySplit
       ? { state: "frozen", xSplit, ySplit, showGridLines: false }
       : { state: "normal", showGridLines: false }],
-    properties: { tabColor: { argb: NAVY } },
+    properties: { tabColor: { argb: argb(palette.main.background) } },
     pageSetup: {
       orientation: "landscape", paperSize: 9, fitToPage: true, fitToWidth: 1, fitToHeight: 0,
       margins: { left: 0.25, right: 0.25, top: 0.4, bottom: 0.4, header: 0.15, footer: 0.15 },
@@ -54,10 +51,10 @@ function layout(workbook, name, title, widths, headers, headerRow, {
   sheet.mergeCells(`A1:${lastColumn}1`);
   const titleCell = sheet.getCell("A1");
   titleCell.value = title;
-  titleCell.font = { ...FONT, size: 16, bold: true, color: { argb: NAVY } };
+  titleCell.font = { ...FONT, size: 16, bold: true, color: { argb: argb(palette.titleText) } };
   titleCell.alignment = { vertical: "middle", wrapText: true };
   sheet.getRow(1).height = 36;
-  headers.forEach((label, index) => header(sheet.getCell(headerRow, index + 1), label));
+  headers.forEach((label, index) => header(sheet.getCell(headerRow, index + 1), label, palette.main));
   sheet.getRow(headerRow).height = comparison ? 58 : 26;
   return sheet;
 }
@@ -113,7 +110,9 @@ function cellValue(segments, bold) {
   })) };
 }
 
-function writeRows(sheet, rows, widths, start, { selected = -1, groupSize = 1, highlighted = false } = {}) {
+function writeRows(sheet, rows, widths, start, palette, { selected = -1, groupSize = 1, highlighted = false } = {}) {
+  const selectedFill = argb(palette.selectedFill);
+  const band = argb(palette.band);
   let rowNumber = start;
   const firstRows = [];
   rows.forEach((row, index) => {
@@ -128,7 +127,7 @@ function writeRows(sheet, rows, widths, start, { selected = -1, groupSize = 1, h
         cell.value = cellValue(piece?.segments ?? [], col === 0);
         cell.font = { ...FONT, bold: col === 0 };
         cell.alignment = { vertical: "middle", horizontal: selected >= 0 && col >= 2 ? "center" : "left", wrapText: true };
-        cell.fill = fill(highlighted || col === selected ? PALE_GREEN : Math.floor(index / groupSize) % 2 ? PALE_BLUE : WHITE);
+        cell.fill = fill(highlighted || col === selected ? selectedFill : Math.floor(index / groupSize) % 2 ? band : WHITE);
         if (part === 0 && index % groupSize === 0) cell.border = { top: { style: "thin", color: { argb: GRAY } } };
         height = Math.max(height, 8 + 15 * (piece?.lines ?? 1));
       });
@@ -164,13 +163,13 @@ function paginateSla(sheet, groupStarts, height, repeatedHeight) {
   });
 }
 
-function addSlaSheet(workbook, tables) {
+function addSlaSheet(workbook, tables, palette) {
   const title = SECTION_LABELS.sla;
   const separate = tables.length > 1;
   const packageTables = Boolean(tables[0].caption);
   const widths = packageTables ? [39, 24, 24, 26, 23] : [24, 38, 23, 23, 23];
   const headings = packageTables ? tables[0].headers : [...tables[0].headers.slice(0, 2), ...COMPARISON_HEADERS.slice(2)];
-  const sheet = layout(workbook, title, title, widths, headings, 3, {
+  const sheet = layout(workbook, title, title, widths, headings, 3, palette, {
     comparison: !packageTables, freezeColumns: false, freezeRows: !separate,
   });
   sheet.pageSetup.fitToPage = false;
@@ -186,16 +185,17 @@ function addSlaSheet(workbook, tables) {
     const headerRow = caption ? captionRow + 1 : 3;
     if (caption) {
       sheet.mergeCells(`A${captionRow}:E${captionRow}`);
-      header(sheet.getCell(captionRow, 1), caption, highlighted ? GREEN : NAVY);
+      const colors = highlighted ? palette.proposal : palette.main;
+      header(sheet.getCell(captionRow, 1), caption, colors);
       sheet.getRow(captionRow).height = 36;
-      headers.forEach((label, col) => header(sheet.getCell(headerRow, col + 1), label, highlighted ? GREEN : NAVY));
+      headers.forEach((label, col) => header(sheet.getCell(headerRow, col + 1), label, colors));
       sheet.getRow(headerRow).height = 32;
     } else {
-      markProposalColumn(sheet, headerRow, selectedColumn, headings[selectedColumn]);
+      markProposalColumn(sheet, headerRow, selectedColumn, headings[selectedColumn], palette);
     }
     const groupSize = packageTables ? 1 : groups[0].length;
     const rows = groups.flat().map((cells) => cells.map(runs));
-    const firstRows = writeRows(sheet, rows, widths, headerRow + 1, { selected: selectedColumn, groupSize, highlighted });
+    const firstRows = writeRows(sheet, rows, widths, headerRow + 1, palette, { selected: selectedColumn, groupSize, highlighted });
     if (packageTables) {
       const height = rowsHeight(sheet, captionRow, sheet.rowCount + 1);
       const gap = index ? rowsHeight(sheet, captionRow - 1, captionRow) : 0;
@@ -212,14 +212,14 @@ function addSlaSheet(workbook, tables) {
   }
 }
 
-function addReferenceSheets(workbook, sections) {
+function addReferenceSheets(workbook, sections, palette) {
   function referenceSheet(key, headers, widths, rows, options) {
     const title = SECTION_LABELS[key];
-    const sheet = layout(workbook, title, title, widths, headers, 2, options);
+    const sheet = layout(workbook, title, title, widths, headers, 2, palette, options);
     sheet.getRow(2).height = 32;
-    writeRows(sheet, rows, widths, 3);
+    writeRows(sheet, rows, widths, 3, palette);
   }
-  if (sections.sla) addSlaSheet(workbook, sections.sla);
+  if (sections.sla) addSlaSheet(workbook, sections.sla, palette);
   if (sections.severity) {
     referenceSheet("severity", SEVERITY_HEADERS, [10, 28, 34, 84],
       sections.severity.map(({ code, name, short, description }) => [
@@ -254,26 +254,27 @@ async function addInternalLinks(workbook, sheet, locations) {
 }
 
 export async function generateExcel(proposal) {
+  const palette = resolveDocumentPalette(proposal.palette);
   const workbook = new ExcelJS.Workbook();
   workbook.creator = "Support Services Builder";
   const descriptions = layout(workbook, DESCRIPTION_SHEET, DESCRIPTION_SHEET, DESCRIPTION_WIDTHS, [
     "ID услуги", "Наименование услуги", "Описание услуги", CONDITIONS_TITLE,
-  ], 2, { freezeColumns: false });
+  ], 2, palette, { freezeColumns: false });
   const descriptionRows = writeRows(descriptions, proposal.rows.map(({ id, name, description, conditions }) => [
     runs(id), runs(name), flattenRich(description, true), flattenRich(conditions, true),
-  ]), DESCRIPTION_WIDTHS, 3);
+  ]), DESCRIPTION_WIDTHS, 3, palette);
 
   const { sections } = proposal;
   const introRows = sections.intro
     ? chunks(flattenRich(sections.intro, true), MATRIX_WIDTHS.reduce((sum, width) => sum + width, 0)) : [];
   const headerRow = 4 + introRows.length;
-  const comparison = layout(workbook, "Предложение", proposal.title, MATRIX_WIDTHS, COMPARISON_HEADERS, headerRow, {
+  const comparison = layout(workbook, "Предложение", proposal.title, MATRIX_WIDTHS, COMPARISON_HEADERS, headerRow, palette, {
     comparison: true, freezeRows: !introRows.length,
   });
   comparison.mergeCells("A2:E2");
   const client = comparison.getCell("A2");
   client.value = proposal.clientLine;
-  client.font = { ...FONT, size: 11, color: { argb: NAVY } };
+  client.font = { ...FONT, size: 11, color: { argb: argb(palette.titleText) } };
   client.alignment = { vertical: "middle", wrapText: true };
   comparison.getRow(2).height = 30;
   comparison.getRow(2).hidden = !proposal.clientLine;
@@ -287,15 +288,15 @@ export async function generateExcel(proposal) {
     comparison.getRow(row).height = Math.max(23, 8 + 15 * lines);
   });
   const selected = 2 + proposal.selectedIndex;
-  markProposalColumn(comparison, headerRow, selected, COMPARISON_HEADERS[selected]);
+  markProposalColumn(comparison, headerRow, selected, COMPARISON_HEADERS[selected], palette);
   const matrix = proposal.rows.map(({ id, name, values }) => [runs(id), runs(name), ...values.map(runs)]);
-  const matrixRows = writeRows(comparison, matrix, MATRIX_WIDTHS, headerRow + 1, { selected });
+  const matrixRows = writeRows(comparison, matrix, MATRIX_WIDTHS, headerRow + 1, palette, { selected });
   const locations = matrixRows.flatMap((row, index) => ["A", "B"].map((column) => {
     const address = column + row;
     const cell = comparison.getCell(address);
     cell.font = { ...cell.font, underline: true, color: { argb: LINK_COLOR } };
     return [address, descriptionRows[index]];
   }));
-  addReferenceSheets(workbook, sections);
+  addReferenceSheets(workbook, sections, palette);
   return addInternalLinks(workbook, comparison, locations);
 }

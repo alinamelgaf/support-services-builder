@@ -69,7 +69,10 @@
     </section>
 
     <section class="panel setup" aria-labelledby="proposal-heading">
-      <h2 id="proposal-heading">Настройки предложения</h2>
+      <div class="panel-heading proposal-heading">
+        <h2 id="proposal-heading">Настройки предложения</h2>
+        <button type="button" class="button" id="new-proposal" disabled>Новое предложение</button>
+      </div>
       <p class="notice" id="draft-notice" role="status" hidden></p>
       <div class="fields">
         <label>Клиент <span class="optional">необязательно</span>
@@ -113,6 +116,7 @@
           <p id="comparison-help">Отметьте включённые услуги и укажите параметры, если они нужны.</p>
         </div>
         <div class="actions">
+          <button type="button" id="open-palette" class="button" aria-haspopup="dialog">Палитра документа</button>
           <button type="button" data-format="excel" class="button" disabled>Скачать Excel</button>
           <button type="button" data-format="word" class="button" disabled>Скачать Word</button>
         </div>
@@ -144,6 +148,63 @@
     </section>
   </main>
 
+  <dialog id="palette-dialog" aria-labelledby="palette-heading">
+    <div class="panel-heading">
+      <h2 id="palette-heading">Палитра документа</h2>
+      <button type="button" class="button palette-close" id="close-palette" aria-label="Закрыть палитру">×</button>
+    </div>
+    <div class="palette-body">
+      <fieldset class="palette-choices">
+        <legend>Вариант палитры</legend>
+        <label><input type="radio" name="palette-mode" value="base" checked> Базовая</label>
+        <label><input type="radio" name="palette-mode" value="custom"> Своя</label>
+      </fieldset>
+      <div id="palette-colors"></div>
+      <h3 id="palette-preview-heading">Предпросмотр</h3>
+      <table id="palette-preview" aria-labelledby="palette-preview-heading">
+        <thead><tr><th scope="col">Показатель</th><th scope="col">Предложение</th></tr></thead>
+        <tbody>
+          <tr><td>Время реакции</td><td>20 минут</td></tr>
+          <tr><td>Время ответа</td><td>4 часа</td></tr>
+          <tr><td>Поддержка</td><td>24×7</td></tr>
+        </tbody>
+      </table>
+      <div id="palette-warning" class="notice palette-warning" role="status" hidden></div>
+      <div class="palette-links">
+        <h3>Где подобрать цвет?</h3>
+        <a href="https://get-color.ru/#000000" target="_blank" rel="noopener noreferrer">Get Color</a>
+        <a href="https://color.adobe.com/create/color-wheel" target="_blank" rel="noopener noreferrer">Adobe Color</a>
+      </div>
+      <div class="actions palette-actions">
+        <button type="button" class="button" id="save-palette">Зафиксировать локально</button>
+        <button type="button" class="button" id="reset-palette">Сбросить локальную палитру</button>
+      </div>
+      <p id="palette-notice" class="notice" role="status" hidden></p>
+    </div>
+  </dialog>
+  <template id="palette-fields">
+    <fieldset class="palette-card">
+      <legend data-label></legend>
+      <div class="palette-inputs" data-color="background">
+        <input type="color" data-picker>
+        <input type="text" data-hex autocomplete="off" spellcheck="false" placeholder="#RRGGBB">
+        <small class="palette-invalid" data-invalid hidden>Введите HEX в формате #RRGGBB.</small>
+      </div>
+      <fieldset class="palette-text">
+        <legend>Цвет текста</legend>
+        <div class="palette-choices">
+          <label><input type="radio" value="default"> По умолчанию</label>
+          <label><input type="radio" value="auto"> Авто</label>
+          <label><input type="radio" value="custom"> Свой</label>
+        </div>
+        <div class="palette-inputs" data-color="textColor" hidden>
+          <input type="color" data-picker>
+          <input type="text" data-hex autocomplete="off" spellcheck="false" placeholder="#RRGGBB">
+          <small class="palette-invalid" data-invalid hidden>Введите HEX в формате #RRGGBB.</small>
+        </div>
+      </fieldset>
+    </fieldset>
+  </template>
   <dialog id="service-dialog" aria-labelledby="service-heading">
     <div class="panel-heading">
       <div>

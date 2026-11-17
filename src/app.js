@@ -10,6 +10,8 @@ import { generateExcel } from "./excel.js";
 import { generateWord } from "./word.js";
 import { enablePwa } from "./pwa.js";
 import { createDraftAutosave, openDraftStore } from "./draft.js";
+import { documentPalette, readLocalPalette } from "./export-palette.js";
+import { setupPaletteDialog } from "./palette-dialog.js";
 
 const $ = (selector) => document.querySelector(selector);
 const state = {
@@ -106,6 +108,16 @@ function draftChanged() {
   draft?.change();
 }
 
+function paletteForNewProposal() {
+  notice("#palette-notice", "");
+  try {
+    return readLocalPalette(window.localStorage);
+  } catch {
+    notice("#palette-notice", "Не удалось прочитать локальную палитру. Используется базовая.", true);
+    return documentPalette();
+  }
+}
+
 function setBusy(busy) {
   state.busy = busy;
   $("#upload").disabled = $("#catalog-file").disabled = busy;
@@ -115,6 +127,7 @@ function setBusy(busy) {
   $("#import-defaults").disabled = $("#defaults-file").disabled = busy;
   $("#export-defaults").disabled = busy || !state.local;
   $("#save-sources").disabled = $("#reset-batch").disabled = busy;
+  $("#new-proposal").disabled = $("#open-palette").disabled = busy;
   for (const button of downloads) button.disabled = busy || !state.services.length;
   renderDocumentOptions();
 }
@@ -351,6 +364,16 @@ function clearDraft() {
   notice("#export-notice", "");
 }
 
+$("#new-proposal").addEventListener("click", () => {
+  if (!window.confirm("Начать новое предложение? Оно заменит текущий черновик. Загруженный каталог останется доступен.")) return;
+  $("#client").value = $("#title").value = "";
+  state.selected = DEFAULT_OPTION;
+  state.documentOptions = documentOptions();
+  state.palette = paletteForNewProposal();
+  for (const radio of document.querySelectorAll('input[name="proposal-variant"]')) radio.checked = radio.value === state.selected;
+  applyLayer(state.layer);
+});
+
 function serviceSettings() {
   return {
     overrides: state.overrides, defaults: state.defaults.values,
@@ -442,6 +465,7 @@ async function exportProposal(format) {
     ...serviceSettings(),
     sections: state.sections,
     document: state.documentOptions,
+    palette: state.palette,
     confluenceBases: [state.base, sources.base],
   };
   const label = format === "excel" ? "Excel" : "Word";
@@ -569,6 +593,7 @@ function snapshotProposal() {
   return {
     selected, services, overrides, documentOverrides, defaults, standard, hasStandard, layer, base, catalog, draftEditsPreserved,
     client: $("#client").value, title: $("#title").value, sections: state.sections, documentOptions: state.documentOptions,
+    palette: state.palette,
   };
 }
 
@@ -585,6 +610,7 @@ function restoreProposal(saved) {
   Object.assign(state, {
     selected, services, overrides, documentOverrides, defaults: packageSettings(defaults), standard: packageSettings(standard),
     hasStandard, layer, base, catalog, documentOptions: documentOptions(saved.documentOptions),
+    palette: documentPalette(saved.palette),
     draftEditsPreserved: saved.draftEditsPreserved ?? Boolean(saved.conflict && (overrides.size || documentOverrides.size)),
     sections: restoreDocumentSources(saved.sections ?? (previousIntro ? { intro: { data: previousIntro } } : {})),
   });
@@ -634,6 +660,12 @@ window.addEventListener("beforeunload", (event) => {
   event.returnValue = "";
 });
 
+state.palette = paletteForNewProposal();
+setupPaletteDialog({
+  getPalette: () => state.palette,
+  changePalette: (palette) => { state.palette = palette; draftChanged(); },
+  report: (message, error) => notice("#palette-notice", message, error),
+});
 void startDraft();
 enablePwa({
   saveDraft: async () => (await (draft?.flush() ?? true)) && !hasUnsavedWork(),

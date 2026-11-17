@@ -1,6 +1,7 @@
 import presets from "../config/presets.json" with { type: "json" };
 import { XML_INVALID } from "./catalog.js";
 import { buildDocumentSections, supportHeading } from "./document-sections.js";
+import { documentPalette } from "./export-palette.js";
 import { withoutSourceLinks } from "./rich-text.js";
 
 export const OPTIONS = presets.options;
@@ -52,7 +53,7 @@ export function buildServiceRows(services, {
 }
 
 export function buildProposal(services, {
-  title = "", client = "", selected, sections = {}, document, confluenceBases = [], ...settings
+  title = "", client = "", selected, sections = {}, document, confluenceBases = [], palette, ...settings
 }) {
   if (!services.length) throw new Error("Загрузите каталог с корректными карточками услуг.");
   const titleText = textInput(title, "Название предложения", true).trim() || DEFAULT_TITLE;
@@ -60,7 +61,7 @@ export function buildProposal(services, {
   const selectedIndex = OPTIONS.findIndex(({ code }) => code === selected);
   if (selectedIndex < 0) throw new Error("Выберите один вариант поддержки.");
   return {
-    title: titleText, clientLine: clientText ? `Клиент — ${clientText}` : "", selectedIndex,
+    title: titleText, clientLine: clientText ? `Клиент — ${clientText}` : "", selectedIndex, palette: documentPalette(palette),
     rows: buildServiceRows(services, { ...settings, forExport: true }).map((row) => ({
       ...row, description: withoutSourceLinks(row.description, confluenceBases),
       conditions: withoutSourceLinks(row.conditions, confluenceBases),
