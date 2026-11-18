@@ -234,12 +234,14 @@ for (const [index, channel] of channels.entries()) {
     assert.match(await page.locator("#issue-list").textContent(), /Глоссарий.*неоднозначен.*64.*66/);
     assert.equal(await include(page, "sla").isEnabled(), true);
 
+    await page.locator("#open-sources").click();
     await page.locator("#sources-panel summary").click();
     await page.locator("#source-base").fill(REFERENCE_SOURCES.base);
     await page.locator("#source-space").fill(REFERENCE_SOURCES.space);
     for (const [key, label] of Object.entries(REFERENCE_SOURCES.labels)) await page.locator("#label-" + key).fill(label);
     await page.locator("#save-sources").click();
     assert.equal(await page.locator("#source-link").isVisible(), true);
+    await page.locator("#close-sources").click();
     await upload(page, ambiguous);
     assert.equal(await include(page, "glossary").isEnabled(), true);
     assert.equal(await page.locator("#catalog-notice").isVisible(), false);

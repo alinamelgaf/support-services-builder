@@ -35,12 +35,14 @@ const storageKeys = {
 const parameter = (page) => page.getByRole("textbox", { name: "Параметр TS-1 в Standard", exact: true });
 
 async function save(page, space, value) {
+  await page.locator("#open-sources").click();
   await page.locator("#sources-panel summary").click();
   assert.ok(await page.getByRole("textbox", { name: "Вводные тексты", exact: true }).isVisible());
   await page.locator("#source-base").fill(SOURCES.base);
   await page.locator("#source-space").fill(space);
   for (const [key, label] of Object.entries(labels)) await page.locator("#label-" + key).fill(label);
   await page.locator("#save-sources").click();
+  await page.locator("#close-sources").click();
   await page.locator("#catalog-file").setInputFiles(catalog);
   await parameter(page).fill(value);
   page.once("dialog", (dialog) => dialog.accept());

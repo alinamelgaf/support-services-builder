@@ -128,6 +128,7 @@ function setBusy(busy) {
   $("#export-defaults").disabled = busy || !state.local;
   $("#save-sources").disabled = $("#reset-batch").disabled = busy;
   $("#new-proposal").disabled = $("#open-palette").disabled = busy;
+  $("#open-sources").disabled = busy;
   for (const button of downloads) button.disabled = busy || !state.services.length;
   renderDocumentOptions();
 }
@@ -279,11 +280,52 @@ function renderIssues(issues) {
   return errors;
 }
 
+function renderCatalog() {
+  const catalog = state.catalog;
+  const attempt = catalog?.attempt;
+  const issues = attempt?.issues ?? catalog?.issues ?? [];
+  const errors = issues.some(({ level }) => level === "error");
+  const warnings = issues.some(({ level }) => level === "warning");
+  const loaded = state.services.length > 0;
+  // Earlier drafts have only the full summary, including the original card count.
+  const pages = catalog?.pages ?? catalog?.summary?.match(/^Услуг загружено \d+ из (\d+) карточек/)?.[1];
+  const count = `${state.services.length}${pages === undefined ? "" : ` из ${pages}`} услуг`;
+  const status = $("#confluence-status");
+  let kind = "";
+  let message = "Данные Confluence не загружены";
+  if (attempt) {
+    kind = "error";
+    message = "Ошибка загрузки JSON. Подробнее — «Источники Confluence».";
+    if (loaded) message += ` Сохранены ранее загруженные данные: ${count}.`;
+  } else if (loaded) {
+    kind = catalog?.error || errors ? "error" : warnings || catalog?.message ? "warning" : "success";
+    message = kind === "success" ? `Данные Confluence загружены: ${count}`
+      : `Загружено ${count}. ${kind === "error" ? "Есть ошибки импорта" : "Есть предупреждения"}. Подробнее — «Источники Confluence».`;
+  }
+  status.className = `confluence-status${kind ? ` ${kind}` : ""}`;
+  status.textContent = message;
+  $("#catalog-summary").textContent = catalog?.summary ?? "Данные Confluence не загружены. Загрузите готовый JSON, SSB распознаёт источники по содержимому файла.";
+  const completeness = $("#catalog-completeness");
+  completeness.textContent = loaded ? catalog?.completeness ?? "Каталог восстановлен из черновика." : "";
+  completeness.hidden = !loaded;
+  renderIssues(issues);
+  notice("#catalog-notice", attempt?.message ?? catalog?.message ?? "", attempt ? true : Boolean(catalog?.error));
+}
+
+function importProblem(message, issues = []) {
+  state.catalog = { ...state.catalog, attempt: { message, issues } };
+  renderCatalog();
+  draftChanged();
+}
+
 async function importCatalog(files) {
   if (!files.length || state.busy) return;
   setBusy(true);
   notice("#catalog-notice", "Проверяем каталог…");
+  $("#confluence-status").className = "confluence-status";
+  $("#confluence-status").textContent = "Проверяем JSON…";
   notice("#export-notice", "");
+  let importIssues = [];
   try {
     if (files.reduce((sum, file) => sum + file.size, 0) > MAX_BYTES) throw new Error("Выберите не более 64 МБ JSON за один раз.");
     const payloads = [];
@@ -294,10 +336,11 @@ async function importCatalog(files) {
     const pending = batch.add(payloads, sources);
     $("#reset-batch").hidden = pending.complete;
     if (!pending.complete) {
-      notice("#catalog-notice", `Неполная выгрузка REST. Получено записей: ${pending.count}${pending.total === undefined ? "" : ` из ${pending.total}`}. Загрузите остальные страницы JSON. Рабочий каталог пока не заменён.`, true);
+      importProblem(`Неполная выгрузка REST. Получено записей: ${pending.count}${pending.total === undefined ? "" : ` из ${pending.total}`}. Загрузите остальные страницы JSON. Рабочий каталог пока не заменён.`);
       return;
     }
     const result = pending.data;
+    importIssues = result.issues;
     const errors = renderIssues(result.issues);
     if (!result.services.length) {
       if (result.issues.length) $("#issues").open = true;
@@ -329,17 +372,18 @@ async function importCatalog(files) {
       ? "Есть ошибки импорта. Проверьте список ниже. Некорректные дополнительные разделы недоступны."
       : !result.usableStandard ? "В этой выгрузке нет применимой базовой конфигурации. Проверьте содержимое JSON." : "";
     state.catalog = {
+      pages: result.pages,
+      completeness: result.legacy ? "Проверен загруженный каталог прежнего формата." : "Полнота REST-выгрузки проверена.",
       issues: result.issues,
       summary: `Услуг загружено ${state.services.length} из ${result.pages} карточек · ${kind}` +
         (recognized.length ? `. Распознано: ${recognized.join(", ")}.` : ""),
       message: catalogMessage, error: Boolean(errors),
     };
-    $("#catalog-summary").textContent = state.catalog.summary;
-    notice("#catalog-notice", state.catalog.message, state.catalog.error);
+    renderCatalog();
     showDefaultsStatus();
     draftChanged();
   } catch (error) {
-    notice("#catalog-notice", error.message, true);
+    importProblem(error.message, importIssues);
   } finally {
     $("#catalog-file").value = "";
     setBusy(false);
@@ -488,6 +532,8 @@ async function exportProposal(format) {
 $("#upload").addEventListener("click", () => $("#catalog-file").click());
 $("#catalog-file").addEventListener("change", (event) => importCatalog([...event.target.files]));
 $("#close-dialog").addEventListener("click", () => $("#service-dialog").close());
+$("#open-sources").addEventListener("click", () => $("#sources-dialog").showModal());
+$("#close-sources").addEventListener("click", () => $("#sources-dialog").close());
 $("#show-release-notes").addEventListener("click", () => $("#release-notes").showModal());
 $("#close-release-notes").addEventListener("click", () => $("#release-notes").close());
 $("#save-defaults").addEventListener("click", fixDefaults);
@@ -528,7 +574,10 @@ setBusy(false);
 function resetBatch() {
   batch.reset();
   $("#reset-batch").hidden = true;
+  if (state.catalog) delete state.catalog.attempt;
+  renderCatalog();
   notice("#catalog-notice", "Ожидающие страницы очищены. Можно начать новую загрузку.");
+  draftChanged();
 }
 
 function updateSourcesLink() {
@@ -619,11 +668,7 @@ function restoreProposal(saved) {
   for (const radio of document.querySelectorAll('input[name="proposal-variant"]')) radio.checked = radio.value === selected;
   renderServices();
   showDefaultsStatus();
-  if (catalog) {
-    $("#catalog-summary").textContent = catalog.summary;
-    renderIssues(catalog.issues);
-    notice("#catalog-notice", catalog.message, catalog.error);
-  }
+  renderCatalog();
 }
 
 for (const field of ["#client", "#title"]) $(field).addEventListener("input", draftChanged);

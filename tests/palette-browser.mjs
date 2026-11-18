@@ -71,7 +71,7 @@ async function open(page) {
 
 async function upload(page) {
   await page.locator("#catalog-file").setInputFiles(sample);
-  await page.getByText(/Услуг загружено 6 из 6/).waitFor();
+  await page.waitForFunction(() => document.querySelectorAll("#services tr").length === 6);
   await saved(page);
 }
 

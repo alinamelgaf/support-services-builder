@@ -71,6 +71,7 @@ async function checkAppIcon(page) {
 }
 
 async function configure(page) {
+  await page.locator("#open-sources").click();
   await page.getByText("Настройки источников Confluence", { exact: true }).click();
   await page.locator("#source-base").fill(SOURCES.base);
   await page.locator("#source-space").fill(SOURCES.space);
@@ -79,6 +80,7 @@ async function configure(page) {
   const href = await page.locator("#source-link").getAttribute("href");
   assert.match(href, /^https:\/\/wiki\.example\.invalid\/confluence\/rest\/api\/content\/search\?/);
   assert.equal(new URL(href).searchParams.get("limit"), "50");
+  await page.locator("#close-sources").click();
 }
 
 async function upload(page, ...pages) {
@@ -144,10 +146,12 @@ async function checkStandalone(browser) {
     await page.waitForFunction(() => !document.querySelector("#upload").disabled);
     const data = fixture();
     await upload(page, paginate(data, 0, 4));
+    await page.locator("#open-sources").click();
     await page.getByText(/Неполная выгрузка REST/).waitFor();
+    await page.locator("#close-sources").click();
     assert.equal(await page.locator('[data-format="excel"]').isDisabled(), true);
     await upload(page, paginate(data, 4, data.size));
-    await page.getByText("Услуг загружено 6 из", { exact: false }).waitFor();
+    await page.waitForFunction(() => document.querySelectorAll("#services tr").length === 6);
     await configure(page);
     assert.deepEqual(await sorted(page), IDS);
     assert.equal(await standardParam(page).inputValue(), "12 часов");
@@ -248,7 +252,7 @@ async function checkHosted(channel) {
     await page.getByText("Черновик восстановлен на этом устройстве.").waitFor();
     assert.equal(await standardParam(page).inputValue(), "9 часов в сохранённом профиле");
     await upload(page, { ...fixture({ catalogCount: 26, unknown: false, adversarial: false }), limit: 50 });
-    await page.getByText("Услуг загружено 26 из 26", { exact: false }).waitFor();
+    await page.waitForFunction(() => document.querySelectorAll("#services tr").length === 26);
     assert.equal(await standardParam(page).inputValue(), "9 часов в сохранённом профиле");
     assert.match(await exportFile(page, "word", "word/document.xml"), /Учебный список/);
     await context.setOffline(false);

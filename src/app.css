@@ -66,7 +66,7 @@ p { margin: var(--space-xs) 0 0; }
 main { padding-bottom: var(--space-xl); }
 
 .panel { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius-panel); margin-bottom: var(--space-l); }
-.catalog-panel, .setup { padding: var(--space-l) var(--panel-inset); }
+.setup { padding: var(--space-l) var(--panel-inset); }
 .panel-heading { display: flex; justify-content: space-between; align-items: center; gap: var(--space-m); }
 .panel-heading > * { min-width: 0; overflow-wrap: anywhere; }
 .panel-heading > .actions { flex: 0 0 auto; }
@@ -109,6 +109,10 @@ main { padding-bottom: var(--space-xl); }
 .button:disabled { background: var(--disabled-bg); color: var(--disabled-ink); border-color: var(--line); cursor: default; }
 .notice { padding: var(--space-s) var(--space-m); margin: var(--space-m) 0 0; background: var(--blue-soft); border-radius: var(--radius-control); overflow-wrap: anywhere; }
 .notice.error { color: var(--danger); background: var(--danger-bg); }
+.confluence-status { margin-top: var(--space-s); padding: var(--space-xs) var(--space-s); border-radius: var(--radius-control); background: var(--blue-soft); color: var(--muted); font-size: var(--text-small); overflow-wrap: anywhere; }
+.confluence-status.success { color: var(--green); background: var(--green-pale); }
+.confluence-status.warning { color: var(--warning); background: var(--warning-bg); }
+.confluence-status.error { color: var(--danger); background: var(--danger-bg); }
 #issues { margin-top: var(--space-m); padding-top: var(--space-s); border-top: 1px solid var(--line); }
 #issues summary { color: var(--warning); font-weight: var(--weight-label); cursor: pointer; }
 #issue-list { padding-left: var(--space-xl); margin: var(--space-s) 0 0; }
@@ -206,6 +210,8 @@ dialog .service-id { margin: 0 0 var(--space-xs); }
 .service-copy :is(ul, ol) { margin: var(--space-xs) 0; padding-left: var(--space-xl); }
 
 #palette-dialog { --dialog-width: 680px; }
+#sources-dialog { --dialog-width: 800px; }
+#sources-dialog .details-body { overflow-wrap: anywhere; }
 #palette-reset-dialog { --dialog-width: 460px; }
 .palette-close { min-width: var(--control-height); padding-inline: var(--space-s); font-size: 20px; line-height: 1; }
 .palette-body p:first-child { margin-top: 0; }
@@ -232,6 +238,10 @@ dialog .service-id { margin: 0 0 var(--space-xs); }
 .palette-links h3 { margin: 0; }
 .palette-actions { margin-top: var(--space-m); }
 .proposal-heading { flex-wrap: wrap; }
+.proposal-heading > .actions { flex-wrap: nowrap; }
+@media (max-width: 1050px) {
+  .proposal-heading > .actions { flex-wrap: wrap; }
+}
 
 @media (max-width: 560px) {
   #palette-colors { grid-template-columns: 1fr; }
@@ -267,7 +277,6 @@ dialog .service-id { margin: 0 0 var(--space-xs); }
   .app-label { padding-left: var(--space-m); font-size: 18px; }
   .local { display: none; }
   .fields, .variants { grid-template-columns: 1fr; }
-  .catalog-panel .panel-heading { align-items: flex-start; flex-direction: column; }
   #palette-dialog { --dialog-inset: var(--space-m); }
   .palette-text .palette-choices { gap: var(--space-xs); }
   .id-col { width: 84px; }
