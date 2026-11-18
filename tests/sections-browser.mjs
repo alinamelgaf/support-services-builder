@@ -28,7 +28,7 @@ async function upload(page, data) {
     const input = document.querySelector("#catalog-file");
     return !input.disabled && !input.files.length;
   });
-  await page.getByText("Черновик сохранён на этом устройстве.").waitFor();
+  await page.getByText("Черновик сохранён на этом устройстве.").waitFor({ state: "attached" });
 }
 
 const withoutMetadata = (data) => ({ ...data, results: data.results.map(({ metadata, ...item }) => item) });
@@ -69,9 +69,7 @@ for (const [index, channel] of channels.entries()) {
     assert.equal(await include(page, "sla").isDisabled(), true);
     assert.match(await page.locator("#reason-sla").textContent(), /Источник не загружен/);
     await upload(page, withoutMetadata(referenceFixture()));
-    const summary = await page.locator("#catalog-summary").textContent();
-    assert.match(summary, /Услуг загружено 6 из 6/);
-    for (const name of ["Базовая конфигурация", "Вводный текст", ...names]) assert.ok(summary.includes(name));
+    assert.match(await page.locator("#confluence-status").textContent(), /6 из 6 услуг/);
     assert.equal(await page.locator("#catalog-notice").isVisible(), false);
     for (const width of [1280, 375]) {
       await page.setViewportSize({ width, height: 900 });
@@ -154,7 +152,7 @@ for (const [index, channel] of channels.entries()) {
       }
       await include(page, key).check();
     }
-    await page.getByText("Черновик сохранён на этом устройстве.").waitFor();
+    await page.getByText("Черновик сохранён на этом устройстве.").waitFor({ state: "attached" });
     await page.evaluate((prefix) => new Promise((resolve, reject) => {
       const open = indexedDB.open(prefix + "support-services-builder-drafts");
       open.onerror = () => reject(open.error);
@@ -174,7 +172,7 @@ for (const [index, channel] of channels.entries()) {
       };
     }), production ? "" : "ssb-dev:");
     await page.reload();
-    await page.getByText("Черновик восстановлен на этом устройстве.").waitFor();
+    await page.getByText("Черновик восстановлен").waitFor();
     for (const key of keys) assert.equal(await include(page, key).isChecked(), true);
     assert.equal(await mode(page, "all").isChecked(), true);
     assert.equal(await slaFormat(page, "separate").isChecked(), true);
@@ -199,7 +197,7 @@ for (const [index, channel] of channels.entries()) {
     assert.match(await page.locator("#issue-list").textContent(), /Отсутствует сочетание/);
     assert.match(await page.locator("#catalog-notice").getAttribute("class"), /\berror\b/);
     await page.reload();
-    await page.getByText("Черновик восстановлен на этом устройстве.").waitFor();
+    await page.getByText("Черновик восстановлен").waitFor();
     assert.match(await page.locator("#issue-list").textContent(), /Отсутствует сочетание/);
 
     const updated = referenceFixture({
@@ -219,7 +217,7 @@ for (const [index, channel] of channels.entries()) {
     assert.equal(await page.locator("#catalog-notice").isVisible(), false);
     assert.equal(await page.locator("#issues").isVisible(), false);
     await page.reload();
-    await page.getByText("Черновик восстановлен на этом устройстве.").waitFor();
+    await page.getByText("Черновик восстановлен").waitFor();
     assert.equal(await page.locator("#catalog-notice").isVisible(), false);
     assert.equal(await page.locator("#issues").isVisible(), false);
     assert.match(await page.locator("#reason-glossary").textContent(), /не заполнен/);
@@ -235,7 +233,6 @@ for (const [index, channel] of channels.entries()) {
     assert.equal(await include(page, "sla").isEnabled(), true);
 
     await page.locator("#open-sources").click();
-    await page.locator("#sources-panel summary").click();
     await page.locator("#source-base").fill(REFERENCE_SOURCES.base);
     await page.locator("#source-space").fill(REFERENCE_SOURCES.space);
     for (const [key, label] of Object.entries(REFERENCE_SOURCES.labels)) await page.locator("#label-" + key).fill(label);

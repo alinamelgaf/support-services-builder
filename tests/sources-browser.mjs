@@ -9,7 +9,7 @@ const channels = (process.env.SSB_BROWSER_CHANNELS ?? "chromium").split(",");
 const output = process.env.SSB_SAMPLE_OUTPUT;
 const status = (page) => page.locator("#confluence-status");
 const sources = (page) => page.locator("#sources-dialog");
-const waitSaved = (page) => page.getByText("Черновик сохранён на этом устройстве.", { exact: true }).waitFor();
+const waitSaved = (page) => page.getByText("Черновик сохранён на этом устройстве.", { exact: true }).waitFor({ state: "attached" });
 const count = (page) => page.locator("#services tr").count();
 
 async function upload(page, value, raw = false) {
@@ -55,7 +55,6 @@ for (const channel of channels) {
     await openSources(page);
     assert.match(await page.locator("#catalog-notice").textContent(), /JSON в UTF-8/);
     assert.equal(await page.locator("#sources-panel").getAttribute("open"), null);
-    await page.locator("#sources-panel summary").click();
     await page.locator("#source-space").fill("UNSAVED");
     await page.locator("#close-sources").click();
     await openSources(page);
@@ -70,10 +69,8 @@ for (const channel of channels) {
     assert.equal(await status(page).getAttribute("class"), "confluence-status success");
     assert.equal(await count(page), 6);
     await openSources(page);
-    assert.match(await page.locator("#catalog-completeness").textContent(), /Полнота REST-выгрузки проверена/);
-    for (const name of ["Базовая конфигурация", "Вводный текст", "Матрица SLA", "Уровни критичности", "Допущения и ограничения", "Глоссарий"]) {
-      assert.ok((await page.locator("#catalog-summary").textContent()).includes(name));
-    }
+    assert.equal(await sources(page).locator("details:not(#issues), summary:not(#issues-summary), #catalog-summary, #catalog-completeness").count(), 0);
+    for (const key of ["intro", "sla", "severity", "assumptions", "glossary"]) assert.equal(await page.locator("#include-" + key).isEnabled(), true);
     assert.equal(await page.locator("#source-space").inputValue(), "UNSAVED");
     await page.locator("#source-space").fill(REFERENCE_SOURCES.space);
     await page.locator("#source-base").fill(REFERENCE_SOURCES.base);
@@ -110,7 +107,7 @@ for (const channel of channels) {
     assert.match(await status(page).textContent(), /Ошибка загрузки JSON.*Сохранены ранее загруженные данные: 6 из 6 услуг/);
     assert.equal(await count(page), 6);
     await page.reload();
-    await page.getByText("Черновик восстановлен на этом устройстве.").waitFor();
+    await page.getByText("Черновик восстановлен").waitFor();
     assert.match(await status(page).textContent(), /Ошибка загрузки JSON.*6 из 6 услуг/);
     await openSources(page);
     assert.equal(await page.locator("#source-space").inputValue(), REFERENCE_SOURCES.space);
@@ -161,7 +158,7 @@ for (const channel of channels) {
     assert.equal(await page.locator("#include-glossary").isDisabled(), true);
     await upload(page, full);
     await page.reload();
-    await page.getByText("Черновик восстановлен на этом устройстве.").waitFor();
+    await page.getByText("Черновик восстановлен").waitFor();
     assert.equal(await status(page).textContent(), "Данные Confluence загружены: 6 из 6 услуг");
     await openSources(page);
     assert.equal(await page.locator("#issues").isVisible(), false);
@@ -184,7 +181,6 @@ for (const channel of channels) {
       await page.locator("#open-sources").focus();
       await page.keyboard.press("Enter");
       await sources(page).waitFor();
-      if (await page.locator("#sources-panel").getAttribute("open") === null) await page.locator("#sources-panel summary").click();
       assert.equal(await sources(page).evaluate((el) => el.scrollWidth <= el.clientWidth && el.getBoundingClientRect().bottom <= innerHeight), true);
       await page.keyboard.press("Escape");
       assert.equal(await page.locator("#open-sources").evaluate((button) => button === document.activeElement && button.matches(":focus-visible")), true);

@@ -36,7 +36,6 @@ const parameter = (page) => page.getByRole("textbox", { name: "Параметр 
 
 async function save(page, space, value) {
   await page.locator("#open-sources").click();
-  await page.locator("#sources-panel summary").click();
   assert.ok(await page.getByRole("textbox", { name: "Вводные тексты", exact: true }).isVisible());
   await page.locator("#source-base").fill(SOURCES.base);
   await page.locator("#source-space").fill(space);
@@ -48,11 +47,11 @@ async function save(page, space, value) {
   page.once("dialog", (dialog) => dialog.accept());
   await page.locator("#save-defaults").click();
   await page.locator("#client").fill(value);
-  await page.getByText("Черновик сохранён на этом устройстве.").waitFor();
+  await page.getByText("Черновик сохранён на этом устройстве.").waitFor({ state: "attached" });
 }
 
 async function restore(page, space, value) {
-  await page.getByText("Черновик восстановлен на этом устройстве.").waitFor();
+  await page.getByText("Черновик восстановлен").waitFor();
   assert.equal(await page.locator("#source-space").inputValue(), space);
   assert.equal(await page.locator("#client").inputValue(), value);
   assert.equal(await parameter(page).inputValue(), value);
@@ -169,7 +168,7 @@ async function verify(channel) {
     await page.reload();
     assert.equal(await page.title(), "SSB — Тестовая версия");
     await page.locator(".topbar").getByText("ТЕСТОВАЯ", { exact: true }).waitFor();
-    await page.getByText("Локальная тестовая сборка.", { exact: false }).waitFor();
+    await page.getByText("Тестовая версия · Данные хранятся отдельно от рабочей версии", { exact: true }).waitFor();
     assert.equal(await page.locator("#version").textContent(), "Версия " + version + "-dev");
     await page.waitForFunction(() => !document.querySelector("main").inert);
     assert.equal(await page.locator("#client").inputValue(), "");

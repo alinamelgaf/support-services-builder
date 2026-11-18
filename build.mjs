@@ -81,7 +81,7 @@ function html(csp, styleTag, scriptTag, appIcon, manifest = "") {
     .replace("<!-- APP_ICON -->", () => appIcon)
     .replace("<!-- APP_TITLE -->", () => dev ? "SSB — Тестовая версия" : "Support Services Builder")
     .replace("<!-- DEV_BADGE -->", () => dev ? '\n      <span class="dev-badge">ТЕСТОВАЯ</span>' : "")
-    .replace("<!-- DEV_NOTICE -->", () => dev ? '\n    <p class="dev-notice">Локальная тестовая сборка. Настройки и черновики хранятся отдельно.</p>' : "")
+    .replace("<!-- DEV_NOTICE -->", () => dev ? '\n    <p class="dev-notice">Тестовая версия · Данные хранятся отдельно от рабочей версии</p>' : "")
     .replace("<!-- UPDATE_PREVIEW -->", () => dev ? `
       <div class="update-preview" id="pwa-preview" hidden>
         <label for="pwa-preview-result">Тестовый ответ PWA</label>

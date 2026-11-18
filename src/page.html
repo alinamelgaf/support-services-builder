@@ -23,7 +23,7 @@
       <div class="panel-heading intro-heading">
         <div class="intro-copy">
           <h1>Конструктор услуг технического сопровождения</h1>
-          <p>Сравните три варианта поддержки и сформируйте предложение клиенту.</p>
+          <p>Сравните три варианта поддержки и подготовьте предложение.</p>
         </div>
         <div class="intro-controls">
           <div class="actions pwa-actions" id="pwa-actions">
@@ -48,7 +48,7 @@
         </div>
       </div>
       <p id="confluence-status" class="confluence-status" role="status">Данные Confluence не загружены</p>
-      <p class="notice" id="draft-notice" role="status" hidden></p>
+      <p class="draft-status" id="draft-notice" role="status" hidden></p>
       <div class="fields">
         <label>Клиент <span class="optional">необязательно</span>
           <input type="text" id="client" maxlength="180" placeholder="Название компании">
@@ -88,7 +88,7 @@
       <div class="panel-heading">
         <div>
           <h2 id="comparison-heading">Сравнение вариантов</h2>
-          <p id="comparison-help">Отметьте включённые услуги и укажите параметры, если они нужны.</p>
+          <p id="comparison-help">Выберите услуги для документа и настройте параметры вариантов.</p>
         </div>
         <div class="actions">
           <button type="button" id="open-palette" class="button" aria-haspopup="dialog">Палитра документа</button>
@@ -98,7 +98,7 @@
       </div>
       <div class="defaults-tools">
         <h3>Стандарт и настройки менеджера</h3>
-        <p id="defaults-layer"></p>
+        <p id="defaults-layer" role="status"></p>
         <div class="actions">
           <button type="button" id="apply-standard" class="button" disabled>Применить стандарт Confluence</button>
           <button type="button" id="save-defaults" class="button" disabled>Зафиксировать локально</button>
@@ -108,7 +108,6 @@
           <input type="file" id="defaults-file" accept=".json,application/json" hidden>
         </div>
         <p id="defaults-notice" class="notice" role="status" hidden></p>
-        <p id="conflict-notice" class="notice" role="status" hidden></p>
       </div>
       <p id="export-notice" class="notice" role="status" hidden></p>
       <div id="empty" class="empty">После загрузки каталога здесь появятся услуги и настройки пакетов.</div>
@@ -129,20 +128,17 @@
       <button type="button" class="button palette-close" id="close-sources" aria-label="Закрыть источники Confluence">×</button>
     </div>
     <div class="details-body">
-      <p id="catalog-summary">Данные Confluence не загружены. Загрузите готовый JSON, SSB распознаёт источники по содержимому файла.</p>
-      <p id="catalog-completeness" hidden></p>
+      <p>Все поля необязательны. Для загрузки готового JSON их заполнять не нужно.</p>
       <a class="button" id="source-link" target="_blank" rel="noopener noreferrer" hidden>Получить актуальные данные</a>
-      <details id="sources-panel" class="source-panel">
-        <summary>Настройки источников Confluence</summary>
+      <div id="sources-panel" class="source-fields">
         <div class="fields source-fields">
           <label>Базовый адрес Confluence<input type="url" id="source-base" placeholder="https://wiki.example.invalid/confluence" autocomplete="off"></label>
           <label>Ключ пространства <span class="optional">необязательно</span><input id="source-space" autocomplete="off"></label>
         </div>
         <div class="fields source-fields" id="source-labels"></div>
-        <p>Настройки нужны для ссылки «Получить актуальные данные» и уточнения источников по меткам. Готовый JSON можно загрузить сразу.</p>
         <button class="button" type="button" id="save-sources">Сохранить источники локально</button>
         <p id="sources-notice" class="notice" role="status" hidden></p>
-      </details>
+      </div>
       <button class="button" type="button" id="reset-batch" hidden>Начать новую выгрузку</button>
       <p id="catalog-notice" class="notice" role="status" hidden></p>
       <details id="issues" hidden>

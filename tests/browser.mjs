@@ -72,7 +72,6 @@ async function checkAppIcon(page) {
 
 async function configure(page) {
   await page.locator("#open-sources").click();
-  await page.getByText("Настройки источников Confluence", { exact: true }).click();
   await page.locator("#source-base").fill(SOURCES.base);
   await page.locator("#source-space").fill(SOURCES.space);
   for (const [key, label] of Object.entries(SOURCES.labels)) await page.locator(`#label-${key}`).fill(label);
@@ -167,17 +166,17 @@ async function checkStandalone(browser) {
     await page.getByText(/Настройки по умолчанию сохранены/).waitFor();
     await standardParam(page).fill("8 часов в черновике");
     await upload(page, fixture({ parameter: "18 часов", extra: true }));
-    await page.getByText(/Сохранены текущие правки предложения/).waitFor();
-    const differences = page.locator("#conflict-notice");
-    assert.equal(await differences.getAttribute("class"), "notice");
-    assert.match(await differences.textContent(), /применяются локальные настройки менеджера.*TS-1, TS-1\.A\./);
+    await page.getByText(/Есть правки предложения/).waitFor();
+    const differences = page.locator("#defaults-layer");
+    assert.equal(await differences.isVisible(), true);
+    assert.match(await differences.textContent(), /Используются локальные настройки менеджера.*TS-1, TS-1\.A/);
     assert.equal(await standardParam(page).inputValue(), "8 часов в черновике");
     assert.equal(await page.getByRole("textbox", { name: "Параметр TS-3.B в Extended", exact: true }).inputValue(), "6 часов");
     await dialog(page, "#apply-standard", /правки.*будут сброшены/, false);
     assert.equal(await standardParam(page).inputValue(), "8 часов в черновике");
     await dialog(page, "#apply-standard", /сохранённые настройки менеджера останутся/i);
     assert.equal(await standardParam(page).inputValue(), "18 часов");
-    assert.match(await differences.textContent(), /применяется базовая конфигурация Confluence.*TS-1, TS-1\.A\./);
+    assert.match(await differences.textContent(), /Используется стандарт Confluence.*TS-1, TS-1\.A/);
     await dialog(page, "#reset", /Восстановить локальные настройки/);
     assert.equal(await standardParam(page).inputValue(), "7 часов локально");
     assert.equal(await page.locator("#include-intro").isChecked(), true);
@@ -246,10 +245,10 @@ async function checkHosted(channel) {
     await upload(page, fixture());
     await standardParam(page).fill("9 часов в сохранённом профиле");
     await dialog(page, "#save-defaults", /сохранённые настройки будут заменены/i);
-    await page.getByText("Черновик сохранён на этом устройстве.").waitFor();
+    await page.getByText("Черновик сохранён на этом устройстве.").waitFor({ state: "attached" });
     await context.setOffline(true);
     await page.reload();
-    await page.getByText("Черновик восстановлен на этом устройстве.").waitFor();
+    await page.getByText("Черновик восстановлен").waitFor();
     assert.equal(await standardParam(page).inputValue(), "9 часов в сохранённом профиле");
     await upload(page, { ...fixture({ catalogCount: 26, unknown: false, adversarial: false }), limit: 50 });
     await page.waitForFunction(() => document.querySelectorAll("#services tr").length === 26);
@@ -258,7 +257,7 @@ async function checkHosted(channel) {
     await context.setOffline(false);
     const stale = await context.newPage();
     await stale.goto(home);
-    await stale.getByText("Черновик восстановлен на этом устройстве.").waitFor();
+    await stale.getByText("Черновик восстановлен").waitFor();
     await standardParam(page).fill("Черновик перед обновлением");
     await selected(page, "Extended");
     const legacyIntroEditor = await page.locator("#intro-text").count() === 1;
@@ -267,7 +266,7 @@ async function checkHosted(channel) {
     await page.locator("#client").fill("Учебный клиент");
     await page.locator("#title").fill("Учебное предложение");
     await page.getByRole("checkbox", { name: "Включить в документ TS-1.A", exact: true }).uncheck();
-    await page.getByText("Черновик сохранён на этом устройстве.").waitFor();
+    await page.getByText("Черновик сохранён на этом устройстве.").waitFor({ state: "attached" });
     await stale.locator("#client").fill("Учебная правка из другой вкладки");
     await stale.getByText(/Черновик изменён в другой вкладке/).waitFor();
     await stale.close({ runBeforeUnload: false });
@@ -288,7 +287,7 @@ async function checkHosted(channel) {
     assert.equal(await page.locator("#version").textContent(), `Версия ${initialVersion}`);
     await dialog(page, "#update", /сохранённое предложение откроются/);
     await page.getByText(`Версия ${updatedVersion}`, { exact: true }).waitFor();
-    await page.getByText("Черновик восстановлен на этом устройстве.").waitFor();
+    await page.getByText("Черновик восстановлен").waitFor();
     assert.equal(await standardParam(page).inputValue(), "Черновик перед обновлением");
     assert.equal(await page.getByRole("radio", { name: /^Extended/ }).isChecked(), true);
     assert.equal(await page.locator("#include-intro").isChecked(), legacyIntroEditor);
@@ -322,11 +321,11 @@ async function checkHosted(channel) {
     await checkManifest(await context.newCDPSession(reopened));
     await checkAppIcon(reopened);
     assert.equal(await reopened.locator("#version").textContent(), `Версия ${updatedVersion}`);
-    await reopened.getByText("Черновик восстановлен на этом устройстве.").waitFor();
+    await reopened.getByText("Черновик восстановлен").waitFor();
     assert.equal(await standardParam(reopened).inputValue(), "Черновик перед обновлением");
-    const differences = reopened.locator("#conflict-notice");
-    assert.equal(await differences.getAttribute("class"), "notice");
-    assert.match(await differences.textContent(), /применяются локальные настройки менеджера.*TS-1\./);
+    const differences = reopened.locator("#defaults-layer");
+    assert.equal(await differences.isVisible(), true);
+    assert.match(await differences.textContent(), /Используются локальные настройки менеджера.*TS-1/);
     const [guide] = await Promise.all([context.waitForEvent("page"), reopened.getByRole("link", { name: "Помощь" }).click()]);
     await guide.getByRole("heading", { name: /Руководство пользователя/ }).waitFor();
     await dialog(reopened, "#reset", /Восстановить локальные настройки/);

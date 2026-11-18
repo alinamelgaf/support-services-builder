@@ -11,7 +11,7 @@ const output = process.env.SSB_SAMPLE_OUTPUT;
 const channels = (process.env.SSB_BROWSER_CHANNELS ?? "chromium").split(",");
 const sample = { name: "synthetic.json", mimeType: "application/json", buffer: Buffer.from(JSON.stringify(referenceFixture())) };
 const storageKey = "ssb-dev:ssb:document-palette:v1";
-const saved = (page) => page.getByText("Черновик сохранён на этом устройстве.", { exact: true }).waitFor();
+const saved = (page) => page.getByText("Черновик сохранён на этом устройстве.", { exact: true }).waitFor({ state: "attached" });
 const hex = (page, name) => page.getByRole("textbox", { name: `${name} — HEX`, exact: true });
 const mode = (page, key, value) => page.locator(`input[name="palette-text-${key}"][value="${value}"]`);
 const custom = (page) => page.locator('[name="palette-mode"][value="custom"]');
@@ -227,7 +227,7 @@ for (const [index, channel] of channels.entries()) {
     await page.close();
     page = await context.newPage();
     await page.goto(home);
-    await page.getByText("Черновик восстановлен на этом устройстве.").waitFor();
+    await page.getByText("Черновик восстановлен").waitFor();
     await open(page);
     await checkPreview(page, ...customColors);
     assert.equal(await reset().isEnabled(), true);
@@ -243,7 +243,7 @@ for (const [index, channel] of channels.entries()) {
     await page.locator("#close-palette").click();
     await newProposal(page, true);
     assert.equal(await page.locator("#client").inputValue(), "");
-    assert.match(await page.locator("#catalog-summary").textContent(), /Услуг загружено 6 из 6/);
+    assert.match(await page.locator("#confluence-status").textContent(), /6 из 6 услуг/);
     await page.locator('#variants input[value="Extended"]').check();
     await page.locator("#include-sla").check();
     await page.locator('[name="sla-mode"][value="all"]').check();
@@ -299,7 +299,7 @@ for (const [index, channel] of channels.entries()) {
     await checkDownloads(page, "after-reset", base);
     await upload(page);
     await page.reload();
-    await page.getByText("Черновик восстановлен на этом устройстве.").waitFor();
+    await page.getByText("Черновик восстановлен").waitFor();
     await open(page);
     await checkPreview(page, ...base);
     assert.equal(await reset().isDisabled(), true);
@@ -333,7 +333,7 @@ for (const [index, channel] of channels.entries()) {
       });
     });
     await page.reload();
-    await page.getByText("Черновик восстановлен на этом устройстве.").waitFor();
+    await page.getByText("Черновик восстановлен").waitFor();
     await open(page);
     await checkPreview(page, ...base);
     assert.equal(await page.evaluate((key) => JSON.parse(localStorage.getItem(key)).proposal.background, storageKey), "#121212");

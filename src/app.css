@@ -109,6 +109,10 @@ main { padding-bottom: var(--space-xl); }
 .button:disabled { background: var(--disabled-bg); color: var(--disabled-ink); border-color: var(--line); cursor: default; }
 .notice { padding: var(--space-s) var(--space-m); margin: var(--space-m) 0 0; background: var(--blue-soft); border-radius: var(--radius-control); overflow-wrap: anywhere; }
 .notice.error { color: var(--danger); background: var(--danger-bg); }
+.notice.success { color: var(--green); background: var(--green-pale); }
+.draft-status { margin-top: var(--space-s); font-size: var(--text-small); color: var(--muted); }
+.draft-status.success { color: var(--green); }
+.draft-status.error { padding: var(--space-s) var(--space-m); border-radius: var(--radius-control); color: var(--danger); background: var(--danger-bg); overflow-wrap: anywhere; }
 .confluence-status { margin-top: var(--space-s); padding: var(--space-xs) var(--space-s); border-radius: var(--radius-control); background: var(--blue-soft); color: var(--muted); font-size: var(--text-small); overflow-wrap: anywhere; }
 .confluence-status.success { color: var(--green); background: var(--green-pale); }
 .confluence-status.warning { color: var(--warning); background: var(--warning-bg); }
@@ -260,6 +264,7 @@ dialog .service-id { margin: 0 0 var(--space-xs); }
 .sla-modes, .sla-formats { display: grid; gap: var(--space-xs); margin: var(--space-xs) 0 var(--space-xs) var(--space-xl); }
 .defaults-tools { margin: 0 var(--panel-inset) var(--space-m); padding: var(--space-m); border: 1px solid var(--line); border-radius: var(--radius-panel); }
 .defaults-tools h3 { margin: 0; }
+#defaults-layer { color: var(--muted); font-size: var(--text-small); overflow-wrap: anywhere; }
 .defaults-tools .actions { margin-top: var(--space-s); }
 .comparison .defaults-tools .notice { margin: var(--space-s) 0 0; }
 
@@ -293,6 +298,3 @@ dialog .service-id { margin: 0 0 var(--space-xs); }
 .pwa-actions { justify-content: flex-end; }
 /* Let the buttons size the column so a long notice does not move the toolbar. */
 #pwa-notice { contain: inline-size; text-align: right; overflow-wrap: anywhere; }
-.source-panel { margin-top: var(--space-m); padding-top: var(--space-m); border-top: 1px solid var(--line); }
-.source-panel summary { cursor: pointer; font-weight: var(--weight-label); }
-.source-panel .button { margin-top: var(--space-s); }

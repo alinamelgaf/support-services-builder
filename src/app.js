@@ -91,11 +91,22 @@ function node(tag, text = "", className = "") {
   return element;
 }
 
-function notice(selector, message, error = false) {
+const noticeTimers = new Map();
+
+function notice(selector, message, error = false, temporary = false) {
+  clearTimeout(noticeTimers.get(selector));
+  noticeTimers.delete(selector);
   const box = $(selector);
   box.textContent = message;
   box.classList.toggle("error", error);
+  box.classList.toggle("success", Boolean(message && temporary && !error));
   box.hidden = !message;
+  if (message && temporary && !error) {
+    noticeTimers.set(selector, setTimeout(() => {
+      box.hidden = true;
+      noticeTimers.delete(selector);
+    }, 5000));
+  }
 }
 
 function hasDraftChanges() {
@@ -105,6 +116,7 @@ function hasDraftChanges() {
 function draftChanged() {
   notice("#export-notice", "");
   draftTouched = true;
+  showDefaultsStatus();
   draft?.change();
 }
 
@@ -304,10 +316,6 @@ function renderCatalog() {
   }
   status.className = `confluence-status${kind ? ` ${kind}` : ""}`;
   status.textContent = message;
-  $("#catalog-summary").textContent = catalog?.summary ?? "Данные Confluence не загружены. Загрузите готовый JSON, SSB распознаёт источники по содержимому файла.";
-  const completeness = $("#catalog-completeness");
-  completeness.textContent = loaded ? catalog?.completeness ?? "Каталог восстановлен из черновика." : "";
-  completeness.hidden = !loaded;
   renderIssues(issues);
   notice("#catalog-notice", attempt?.message ?? catalog?.message ?? "", attempt ? true : Boolean(catalog?.error));
 }
@@ -437,24 +445,22 @@ function applyDefaults(settings) {
   defaultsUnsaved = !saved;
   applyLayer("local");
   notice("#defaults-notice", saved
-    ? "Настройки по умолчанию сохранены в этом браузере. Для переноса можно скачать файл."
-    : "Настройки применены в этой вкладке. Браузер не подтвердил сохранение. Скачайте файл настроек и загрузите его при следующем открытии.", !saved);
+    ? "Настройки по умолчанию сохранены локально."
+    : "Настройки применены в этой вкладке. Браузер не подтвердил сохранение. Скачайте файл настроек и загрузите его при следующем открытии.", !saved, saved);
 }
 
 function showDefaultsStatus() {
   const active = state.layer === "local"
-    ? "В предложении применяются локальные настройки менеджера."
-    : state.hasStandard ? "В предложении применяется базовая конфигурация Confluence."
-      : "Полный стандарт Confluence пока не загружен.";
+    ? "Используются локальные настройки менеджера"
+    : state.hasStandard ? "Используется стандарт Confluence"
+      : "Стандарт Confluence не загружен";
   const differences = state.hasStandard ? defaultDifferences(state.standard, state.local, state.services) : [];
   const details = [];
-  if (differences.length) details.push(`Услуги с различиями между локальными настройками и стандартом Confluence: ${differences.join(", ")}.`);
-  if (state.draftEditsPreserved) details.push("Сохранены текущие правки предложения.");
+  if (differences.length) details.push(`Локальные отличия: ${differences.join(", ")}`);
+  if (hasDraftChanges()) details.push("Есть правки предложения");
 
   const status = $("#defaults-layer");
-  status.textContent = active;
-  status.hidden = details.length > 0;
-  notice("#conflict-notice", details.length ? [active, ...details].join(" ") : "");
+  status.textContent = [active, ...details].join(" · ");
 }
 
 function applyLayer(layer) {
@@ -521,7 +527,7 @@ async function exportProposal(format) {
       ? new Blob([await generateExcel(proposal)], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" })
       : await generateWord(proposal);
     downloadFile(file, format === "excel" ? "ssb-proposal.xlsx" : "ssb-proposal.docx");
-    notice("#export-notice", `Файл ${label} сформирован.`);
+    notice("#export-notice", `Файл ${label} сформирован.`, false, true);
   } catch (error) {
     notice("#export-notice", error.message, true);
   } finally {
@@ -545,12 +551,12 @@ $("#defaults-file").addEventListener("change", (event) => importDefaults(event.t
 $("#reset").addEventListener("click", () => {
   if (!window.confirm("Восстановить локальные настройки? Текущие правки пакетов будут сброшены.")) return;
   applyLayer("local");
-  notice("#defaults-notice", "Восстановлены локальные настройки менеджера.");
+  notice("#defaults-notice", "Локальные настройки менеджера применены.", false, true);
 });
 $("#apply-standard").addEventListener("click", () => {
   if (!window.confirm("Применить стандарт Confluence? Текущие правки пакетов будут сброшены. Сохранённые настройки менеджера останутся доступны.")) return;
   applyLayer("corporate");
-  notice("#defaults-notice", "Применён стандарт Confluence.");
+  notice("#defaults-notice", "Применён стандарт Confluence.", false, true);
 });
 for (const button of downloads) {
   button.addEventListener("click", () => exportProposal(button.dataset.format));
@@ -562,7 +568,6 @@ try {
     state.local = saved;
     state.defaults = saved;
     state.layer = "local";
-    notice("#defaults-notice", "Восстановлены локальные настройки менеджера из этого браузера.");
   }
 } catch {
   notice("#defaults-notice", "Не удалось прочитать настройки из хранилища браузера. Можно загрузить файл настроек.", true);
@@ -576,7 +581,7 @@ function resetBatch() {
   $("#reset-batch").hidden = true;
   if (state.catalog) delete state.catalog.attempt;
   renderCatalog();
-  notice("#catalog-notice", "Ожидающие страницы очищены. Можно начать новую загрузку.");
+  if (!state.catalog?.message) notice("#catalog-notice", "Ожидающие страницы очищены. Можно начать новую загрузку.", false, true);
   draftChanged();
 }
 
@@ -624,7 +629,7 @@ $("#save-sources").addEventListener("click", () => {
       window.localStorage.setItem(SOURCE_KEY, text);
       if (window.localStorage.getItem(SOURCE_KEY) !== text) throw new Error();
       sourcesUnsaved = false;
-      notice("#sources-notice", "Источники сохранены в этом браузере.");
+      notice("#sources-notice", "Источники сохранены в этом браузере.", false, true);
     } catch {
       sourcesUnsaved = true;
       notice("#sources-notice", "Источники доступны в этой вкладке. Браузер не подтвердил сохранение между запусками.", true);
@@ -679,7 +684,7 @@ function hasUnsavedWork() {
 
 async function startDraft() {
   const main = $("main");
-  const draftStatus = (message, error) => notice("#draft-notice", message, error);
+  const draftStatus = (message, error) => notice("#draft-notice", message, error, !error && message !== "Сохраняем черновик…");
   main.inert = true;
   setBusy(true);
   try {
@@ -687,7 +692,7 @@ async function startDraft() {
     const saved = await store.load();
     if (saved) {
       restoreProposal(saved);
-      draftStatus("Черновик восстановлен на этом устройстве.");
+      draftStatus("Черновик восстановлен");
     }
     draft = createDraftAutosave(store, snapshotProposal, draftStatus);
   } catch {
