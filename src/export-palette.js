@@ -9,6 +9,7 @@ export function hexColor(value) {
 
 export function documentPalette(value) {
   const custom = value?.mode === "custom";
+  const own = value?.custom ?? value;
   function colors(setting, background) {
     return {
       background: hexColor(setting?.background) ?? background,
@@ -18,9 +19,40 @@ export function documentPalette(value) {
   }
   return {
     mode: custom ? "custom" : "base",
-    main: colors(custom ? value.main : null, "#234C5E"),
-    proposal: colors(custom ? value.proposal : null, "#00AD21"),
+    main: colors(custom ? own?.main : null, "#234C5E"),
+    proposal: colors(custom ? own?.proposal : null, "#00AD21"),
   };
+}
+
+function customColors(value) {
+  const { main, proposal } = documentPalette({ ...value, mode: "custom" });
+  return { main, proposal };
+}
+
+export function paletteSettings(value) {
+  return {
+    schemaVersion: 2,
+    updatedAt: Number.isSafeInteger(value?.updatedAt) && value.updatedAt >= 0 ? value.updatedAt : 0,
+    mode: value?.mode === "custom" ? "custom" : "base",
+    custom: customColors(value?.custom ?? value),
+    ...(value?.legacyFixed ? { legacyFixed: customColors(value.legacyFixed) } : {}),
+  };
+}
+
+// The current draft took precedence over the separately fixed palette in the old UI.
+// Retain both when they differ; the former fixed colors remain a migration backup
+// inside the same palette record, rather than a new storage key or template field.
+export function restorePaletteSettings(local, draft) {
+  const modern = [draft, local].filter((value) => value?.schemaVersion === 2);
+  const latest = modern.reduce((chosen, value) => !chosen || (value.updatedAt ?? 0) >= (chosen.updatedAt ?? 0) ? value : chosen, null);
+  const selected = latest ?? draft ?? local;
+  const own = latest?.custom ?? (draft?.mode === "custom" ? draft : local?.mode === "custom" ? local : undefined);
+  const result = paletteSettings({ ...selected, custom: own ?? customColors() });
+  if (!result.legacyFixed && local?.schemaVersion !== 2 && local?.mode === "custom") {
+    const fixed = customColors(local);
+    if (JSON.stringify(fixed) !== JSON.stringify(result.custom)) result.legacyFixed = fixed;
+  }
+  return result;
 }
 
 function channels(hex) {
@@ -73,20 +105,11 @@ export function resolveDocumentPalette(value) {
 
 export function readLocalPalette(storage) {
   const saved = storage.getItem(STORAGE_KEY);
-  return documentPalette(saved === null ? undefined : JSON.parse(saved));
-}
-
-export function hasLocalPalette(storage) {
-  return storage.getItem(STORAGE_KEY) !== null;
+  return saved === null ? null : JSON.parse(saved);
 }
 
 export function writeLocalPalette(storage, value) {
-  const saved = JSON.stringify(documentPalette(value));
+  const saved = JSON.stringify(paletteSettings(value));
   storage.setItem(STORAGE_KEY, saved);
   if (storage.getItem(STORAGE_KEY) !== saved) throw new Error("Проверьте хранилище браузера.");
-}
-
-export function resetLocalPalette(storage) {
-  storage.removeItem(STORAGE_KEY);
-  if (hasLocalPalette(storage)) throw new Error("Проверьте хранилище браузера.");
 }

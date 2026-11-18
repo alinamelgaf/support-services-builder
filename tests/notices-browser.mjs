@@ -25,9 +25,10 @@ for (const channel of (process.env.SSB_BROWSER_CHANNELS ?? "chromium").split(","
     await page.locator("#sources-notice.error").waitFor();
     await page.locator("#close-sources").click();
     await page.locator("#open-palette").click();
-    await page.locator("#save-palette").click();
-    await page.waitForTimeout(5500);
-    assert.equal(await page.locator("#palette-success").isVisible(), true);
+    await page.locator('[name="palette-mode"][value="custom"]').check();
+    await page.getByRole("textbox", { name: "Основной цвет — HEX", exact: true }).fill("#334455");
+    assert.equal(await page.locator("#palette-success").count(), 0);
+    assert.equal(await page.locator("#palette-notice").isVisible(), false);
     await page.keyboard.press("Escape");
     await page.locator("#open-sources").click();
     assert.equal(await page.locator("#sources-notice.error").isVisible(), true);

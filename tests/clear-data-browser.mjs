@@ -87,8 +87,9 @@ for (const channel of channels) {
     assert.equal(await page.locator("#include-glossary").isChecked(), false);
     await saveTemplate(page);
     await page.locator("#open-palette").click();
+    await page.locator('[name="palette-mode"][value="custom"]').check();
     await page.getByRole("textbox", { name: "Основной цвет — HEX", exact: true }).fill("#556677");
-    await page.locator("#save-palette").click();
+    await page.locator('[name="palette-mode"][value="base"]').check();
     await page.locator("#close-palette").click();
     await saved(page);
     const palette = JSON.parse(await record(page)).proposal.palette;

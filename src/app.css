@@ -219,7 +219,6 @@ dialog .service-id { margin: 0 0 var(--space-xs); }
 #sources-dialog .details-body { overflow-wrap: anywhere; }
 .source-actions { justify-content: space-between; align-items: flex-start; margin-top: var(--space-l); }
 .source-settings-actions { justify-content: flex-end; margin-inline-start: auto; }
-#palette-reset-dialog { --dialog-width: 460px; }
 .palette-close { min-width: var(--control-height); padding-inline: var(--space-s); font-size: 20px; line-height: 1; }
 .palette-body p:first-child { margin-top: 0; }
 .palette-choices { display: flex; align-items: center; gap: var(--space-s); }
@@ -240,7 +239,6 @@ dialog .service-id { margin: 0 0 var(--space-xs); }
 #palette-preview tr:nth-child(even) td { background: var(--preview-band); }
 #palette-preview tr td:last-child { background: var(--preview-selected); }
 .palette-warning { color: var(--warning); background: var(--warning-bg); font-size: var(--text-small); }
-.palette-success { display: flex; align-items: baseline; gap: var(--space-s); color: var(--green); background: var(--green-pale); }
 .palette-links { display: flex; flex-wrap: wrap; align-items: baseline; gap: var(--space-xs) var(--space-m); margin-top: var(--space-m); font-size: var(--text-small); }
 .palette-links h3 { margin: 0; }
 .palette-actions { margin-top: var(--space-m); }

@@ -168,7 +168,8 @@ async function verify(channel) {
     await page.reload();
     assert.equal(await page.title(), "SSB — Тестовая версия");
     await page.locator(".topbar").getByText("ТЕСТОВАЯ", { exact: true }).waitFor();
-    await page.getByText("Тестовая версия · Данные хранятся отдельно от рабочей версии", { exact: true }).waitFor();
+    assert.equal(await page.getByText("Тестовая версия · Данные хранятся отдельно от рабочей версии", { exact: true }).count(), 0);
+    assert.equal(await page.locator("main > .dev-notice:not(#ssb-dev-live)").count(), 0);
     assert.equal(await page.locator("#version").textContent(), "Версия " + version + "-dev");
     await page.waitForFunction(() => !document.querySelector("main").inert);
 

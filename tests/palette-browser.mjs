@@ -1,4 +1,4 @@
-import { applyBasis } from "./basis-helper.mjs";
+import { applyBasis, saveTemplate } from "./basis-helper.mjs";
 import assert from "node:assert/strict";
 import { mkdir, readFile } from "node:fs/promises";
 import { join } from "node:path";
@@ -18,16 +18,6 @@ const mode = (page, key, value) => page.locator(`input[name="palette-text-${key}
 const custom = (page) => page.locator('[name="palette-mode"][value="custom"]');
 const storedPalette = (page) => page.evaluate((key) => JSON.parse(localStorage.getItem(key)), storageKey);
 
-async function paletteSuccess(page, title, detail) {
-  const notice = page.locator("#palette-success");
-  await notice.waitFor();
-  assert.equal(await notice.locator("strong").textContent(), title);
-  assert.equal(await notice.locator("p").textContent(), detail);
-  assert.equal(await notice.locator('[aria-hidden="true"]').textContent(), "✓");
-  assert.equal(await page.locator("#palette-dialog").isVisible(), true);
-  assert.equal(await page.locator("#palette-notice").isVisible(), false);
-}
-
 async function toggleStorageFailure(page, method, enabled) {
   await page.evaluate(({ method, enabled, key }) => {
     if (!enabled) {
@@ -44,25 +34,6 @@ async function toggleStorageFailure(page, method, enabled) {
       delete window.restorePaletteStorageMethod;
     };
   }, { method, enabled, key: storageKey });
-}
-
-async function otherDraft(page, seed = false) {
-  return page.evaluate((seed) => new Promise((done, reject) => {
-    const request = indexedDB.open("ssb-dev:support-services-builder-drafts", 1);
-    request.onerror = () => reject(request.error);
-    request.onsuccess = () => {
-      const db = request.result;
-      const tx = db.transaction("proposals", seed ? "readwrite" : "readonly");
-      const store = tx.objectStore("proposals");
-      const entry = store.get(seed ? "/" : "/another-proposal/");
-      if (seed) entry.onsuccess = () => {
-        entry.result.proposal.title = "Другое предложение";
-        store.put(entry.result, "/another-proposal/");
-      };
-      tx.oncomplete = () => { db.close(); done(entry.result); };
-      tx.onabort = () => { db.close(); reject(tx.error); };
-    };
-  }), seed);
 }
 
 async function open(page) {
@@ -125,196 +96,126 @@ if (output) await mkdir(output, { recursive: true });
 for (const [index, channel] of channels.entries()) {
   const browser = await chromium.launch({ channel });
   try {
-    const context = await browser.newContext();
-    const errors = [];
-    const external = [];
+    const context = await browser.newContext({ viewport: { width: 1440, height: 1000 } });
+    const errors = [], external = [];
     context.on("page", (page) => page.on("pageerror", (error) => errors.push(error.message)));
     context.on("request", (request) => {
-      const url = request.url();
-      if (/^https?:/.test(url) && !url.startsWith(home)) external.push(url);
+      if (/^https?:/.test(request.url()) && !request.url().startsWith(home)) external.push(request.url());
     });
     let page = await context.newPage();
     await page.goto(home);
-    await upload(page);
-    await page.locator('#variants input[value="Extended"]').check();
-    for (const key of ["sla", "severity", "assumptions", "glossary"]) await page.locator("#include-" + key).check();
-    await page.locator('[name="sla-mode"][value="all"]').check();
-    await page.locator('[name="sla-format"][value="comparison"]').check();
-
-
+    await page.waitForFunction(() => !document.querySelector("#upload").disabled);
+    assert.equal(await page.locator(".dev-badge").textContent(), "ТЕСТОВАЯ");
+    assert.match(await page.locator("#version").textContent(), /-dev$/);
+    assert.equal(await page.getByText("Тестовая версия · Данные хранятся отдельно от рабочей версии", { exact: true }).count(), 0);
+    if (index === 0 && output) await page.screenshot({ path: join(output, "SSB_TEST_HEADER.png") });
     await open(page);
     const base = ["234C5E", "FFFFFF", "00AD21", "FFFFFF", "E0F5E4"];
-    const reset = () => page.locator("#reset-palette");
-    const confirmReset = () => page.getByRole("dialog", { name: "Сбросить локальную палитру?" });
-    const saveSuccess = () => paletteSuccess(page, "Палитра сохранена локально", "Выбранная палитра будет применяться по умолчанию к новым предложениям.");
-    assert.equal(await reset().isDisabled(), true);
+    const own = ["F7DC94", "000000", "683CA0", "FFF0D5", "EDE8F4"];
+    await checkPreview(page, ...base);
     assert.equal(await custom(page).isChecked(), false);
-    await checkPreview(page, ...base);
-    assert.match(await page.locator("#palette-warning").textContent(), /цвет предложения/);
-    for (const width of [320, 375, 1280]) {
-      await page.setViewportSize({ width, height: 860 });
-      assert.ok(await page.locator("#palette-dialog").evaluate((dialog) => dialog.scrollWidth === dialog.clientWidth));
-      for (const group of await page.locator(".palette-text .palette-choices").all()) {
-        const tops = await group.locator("input").evaluateAll((radios) => radios.map((radio) => radio.offsetTop));
-        assert.equal(new Set(tops).size, 1);
-      }
-    }
-    assert.deepEqual(await page.locator(".palette-links a").evaluateAll((links) => links.map((link) => [link.target, link.rel])),
-      [["_blank", "noopener noreferrer"], ["_blank", "noopener noreferrer"]]);
-    await page.keyboard.press("Escape");
-    assert.equal(await page.locator("#palette-dialog").isVisible(), false);
-    assert.equal(await page.locator("#open-palette").evaluate((button) => button === document.activeElement), true);
-    await checkDownloads(page, "base", base, index === 0 && output);
-
-    await open(page);
-    await page.locator("#save-palette").click();
-    await saveSuccess();
-    assert.equal((await storedPalette(page)).mode, "base");
-    assert.equal(await reset().isEnabled(), true);
+    assert.equal(await hex(page, "Основной цвет").isDisabled(), true);
+    assert.equal(await page.locator("#save-palette, #reset-palette, #palette-reset-dialog, #palette-success").count(), 0);
+    assert.equal(await page.locator("#palette-dialog button").count(), 1);
+    assert.equal(await storedPalette(page), null);
     await custom(page).check();
-    assert.equal(await page.locator("#palette-success").isVisible(), false);
-    assert.equal(await hex(page, "Основной цвет").inputValue(), "#234C5E");
-    await page.locator('[name="palette-mode"][value="base"]').check();
-    await hex(page, "Основной цвет").fill("#zzzzzz");
-    assert.equal(await custom(page).isChecked(), true);
-    assert.equal(await hex(page, "Основной цвет").getAttribute("aria-invalid"), "true");
-    assert.ok(await page.locator("#save-palette").isDisabled());
-    await checkPreview(page, ...base);
-    await page.locator('#palette-colors input[type="color"]').first().fill("#f7dc94");
-    assert.equal(await hex(page, "Основной цвет").inputValue(), "#F7DC94");
-    await hex(page, "Цвет предложения").fill("#683ca0");
+    await page.getByLabel("Основной цвет", { exact: true }).fill("#223344");
+    assert.equal(await hex(page, "Основной цвет").inputValue(), "#223344");
+    await hex(page, "Основной цвет").fill("#F7DC94");
+    await hex(page, "Цвет предложения").fill("#683CA0");
     await mode(page, "main", "custom").check();
-    await hex(page, "Основной цвет — цвет текста").fill("#F7DC94");
-    assert.match(await page.locator("#palette-warning").textContent(), /основной цвет/);
-    await mode(page, "main", "default").check();
+    await hex(page, "Основной цвет — цвет текста").fill("#112233");
     await mode(page, "main", "auto").check();
+    await mode(page, "proposal", "custom").check();
+    await hex(page, "Цвет предложения — цвет текста").fill("#FFF0D5");
     await mode(page, "proposal", "auto").check();
-    await checkPreview(page, "F7DC94", "000000", "683CA0", "FFFFFF", "EDE8F4");
     await mode(page, "proposal", "default").check();
     await mode(page, "proposal", "custom").check();
-    await page.getByLabel("Цвет предложения — цвет текста", { exact: true }).fill("#fff0dc");
-    const customColors = ["F7DC94", "000000", "683CA0", "FFF0DC", "EDE8F4"];
-    await checkPreview(page, ...customColors);
-    assert.equal(await page.locator("#palette-warning").isVisible(), false);
-    assert.equal((await storedPalette(page)).mode, "base");
-
-    await toggleStorageFailure(page, "setItem", true);
-    await page.locator("#save-palette").click();
-    assert.equal(await page.locator("#palette-notice.error").textContent(), "Не удалось сохранить палитру локально.");
-    assert.equal(await page.locator("#palette-success").isVisible(), false);
-    assert.equal((await storedPalette(page)).mode, "base");
-    await toggleStorageFailure(page, "setItem", false);
-    await page.locator("#save-palette").click();
-    await saveSuccess();
-    assert.equal((await storedPalette(page)).proposal.textColor, "#FFF0DC");
-    await hex(page, "Цвет предложения — цвет текста").fill("#FFFFFF");
-    assert.equal(await page.locator("#palette-success").isVisible(), false);
-    await page.locator("#save-palette").click();
-    await saveSuccess();
-    assert.equal((await storedPalette(page)).proposal.textColor, "#FFFFFF");
-    await hex(page, "Цвет предложения — цвет текста").fill("#FFF0DC");
-    await page.locator("#save-palette").click();
-    await saveSuccess();
+    assert.equal(await hex(page, "Цвет предложения — цвет текста").inputValue(), "#FFF0D5");
+    await checkPreview(page, ...own);
+    const ownSettings = (await storedPalette(page)).custom;
+    assert.equal(ownSettings.main.textColor, "#112233");
+    assert.equal(ownSettings.main.textMode, "auto");
+    const valid = await storedPalette(page);
+    await hex(page, "Основной цвет").fill("#12");
+    assert.equal(await hex(page, "Основной цвет").getAttribute("aria-invalid"), "true");
+    assert.deepEqual(await storedPalette(page), valid);
+    await checkPreview(page, ...own);
+    await page.keyboard.press("Escape");
+    await open(page);
+    assert.equal(await hex(page, "Основной цвет").inputValue(), "#F7DC94");
+    await mode(page, "main", "default").check();
+    assert.equal(await page.locator("#palette-warning").isVisible(), true);
+    await mode(page, "main", "custom").check();
+    assert.equal(await hex(page, "Основной цвет — цвет текста").inputValue(), "#112233");
+    await mode(page, "main", "auto").check();
+    await page.locator('[name="palette-mode"][value="base"]').check();
+    await checkPreview(page, ...base);
+    assert.deepEqual((await storedPalette(page)).custom, ownSettings);
     await page.locator("#close-palette").click();
-    assert.equal(await page.locator("#palette-dialog").isVisible(), false);
-    await checkDownloads(page, "custom", customColors, index === 0 && output);
     await saved(page);
     await page.close();
     page = await context.newPage();
     await page.goto(home);
     await page.getByText("Черновик восстановлен").waitFor();
     await open(page);
-    await checkPreview(page, ...customColors);
-    assert.equal(await reset().isEnabled(), true);
-    await page.locator("#close-palette").click();
+    await checkPreview(page, ...base);
+    await custom(page).check();
+    await checkPreview(page, ...own);
+    for (const width of [320, 375, 768, 1440]) {
+      await page.setViewportSize({ width, height: 900 });
+      assert.ok(await page.locator("#palette-dialog").evaluate((el) => el.scrollWidth === el.clientWidth));
+      for (const group of await page.locator(".palette-text .palette-choices").all()) {
+        assert.equal(new Set(await group.locator("label").evaluateAll((labels) => labels.map((el) => el.getBoundingClientRect().top))).size, 1);
+      }
+    }
+    if (index === 0 && output) {
+      await page.mouse.move(1, 1);
+      await page.locator("#palette-dialog").screenshot({ path: join(output, "SSB_PALETTE_AUTOSAVE.png") });
+    }
+    assert.equal(await page.locator("#palette-notice").isVisible(), false);
+    await page.keyboard.press("Escape");
     await upload(page);
-    await open(page);
-    await checkPreview(page, ...customColors);
-    await hex(page, "Основной цвет").fill("#332244");
-    await page.locator("#close-palette").click();
-    await applyBasis(page, "corporate", false);
-    await open(page);
-    assert.equal(await hex(page, "Основной цвет").inputValue(), "#332244");
-    await page.locator("#close-palette").click();
-    await applyBasis(page, "corporate");
-    await open(page);
-    assert.equal(await hex(page,"Основной цвет").inputValue(),"#332244");
-    await hex(page,"Основной цвет").fill("#F7DC94");
-    await page.locator("#close-palette").click();
-
-    assert.match(await page.locator("#confluence-status").textContent(), /6 из 6 услуг/);
     await page.locator('#variants input[value="Extended"]').check();
-    await page.locator("#include-sla").check();
     await page.locator('[name="sla-mode"][value="all"]').check();
     await page.locator('[name="sla-format"][value="comparison"]').check();
-    await saved(page);
-    const previous = await otherDraft(page, true);
-    assert.equal(previous.proposal.palette.proposal.background, "#683CA0");
-    await page.evaluate(() => localStorage.setItem("ssb-test-unrelated-preference", "preserved"));
-    await open(page);
-    await checkPreview(page, ...customColors);
-    const beforeReset = await storedPalette(page);
-    await page.setViewportSize({ width: 320, height: 650 });
-    for (const cancel of [
-      () => confirmReset().getByRole("button", { name: "Отмена" }).click(),
-      () => page.keyboard.press("Escape"),
-      () => confirmReset().getByRole("button", { name: "Закрыть подтверждение" }).click(),
-    ]) {
-      await reset().click();
-      await confirmReset().waitFor();
-      assert.match(await confirmReset().textContent(), /Текущее предложение также переключится на «Базовая»/);
-      assert.equal(await confirmReset().evaluate((dialog) => dialog.scrollWidth === dialog.clientWidth), true);
-      assert.equal(await confirmReset().getByRole("button", { name: "Отмена" }).evaluate((button) => document.activeElement === button), true);
-      await cancel();
-      assert.equal(await confirmReset().isVisible(), false);
-      assert.equal(await page.locator("#palette-dialog").isVisible(), true);
-      await checkPreview(page, ...customColors);
-      assert.deepEqual(await storedPalette(page), beforeReset);
-    }
-    await page.setViewportSize({ width: 1280, height: 860 });
-    await toggleStorageFailure(page, "removeItem", true);
-    await reset().click();
-    await confirmReset().getByRole("button", { name: "Сбросить", exact: true }).click();
-    assert.equal(await page.locator("#palette-notice.error").textContent(), "Не удалось сбросить локальную палитру.");
-    assert.equal(await page.locator("#palette-success").isVisible(), false);
-    assert.deepEqual(await storedPalette(page), beforeReset);
-    await checkPreview(page, ...customColors);
-    await toggleStorageFailure(page, "removeItem", false);
-
-    await reset().click();
-    await confirmReset().getByRole("button", { name: "Сбросить", exact: true }).click();
-    await paletteSuccess(page, "Локальная палитра сброшена", "Применена базовая палитра.");
-    assert.equal(await confirmReset().isVisible(), false);
-    await checkPreview(page, ...base);
-    assert.equal(await custom(page).isChecked(), false);
-    assert.equal(await mode(page, "main", "default").isChecked(), true);
-    assert.equal(await mode(page, "proposal", "default").isChecked(), true);
-    assert.equal(await storedPalette(page), null);
-    assert.equal(await reset().isDisabled(), true);
-    assert.equal(await page.evaluate(() => localStorage.getItem("ssb-test-unrelated-preference")), "preserved");
-    await page.locator("#close-palette").click();
-    await saved(page);
-    assert.deepEqual(await otherDraft(page), previous);
-    await checkDownloads(page, "after-reset", base);
+    await checkDownloads(page, "autosave", own, index === 0 ? output : null);
+    await saveTemplate(page);
+    const independent = await storedPalette(page);
+    await applyBasis(page, "corporate");
+    await applyBasis(page, "local");
+    assert.deepEqual(await storedPalette(page), independent);
     await upload(page);
-    await page.reload();
+    await open(page);
+    await checkPreview(page, ...own);
+    await page.locator('[name="palette-mode"][value="base"]').check();
+    await page.keyboard.press("Escape");
+    await checkDownloads(page, "base", base);
+    await open(page);
+    await custom(page).check();
+    await toggleStorageFailure(page, "setItem", true);
+    const beforeFailure = await storedPalette(page);
+    await hex(page, "Основной цвет").fill("#223344");
+    assert.match(await page.locator("#palette-notice.error").textContent(), /не сохранены локально/);
+    assert.deepEqual(await storedPalette(page), beforeFailure);
+    await saved(page);
+    await toggleStorageFailure(page, "setItem", false);
+    await page.keyboard.press("Escape");
+    await page.close();
+    page = await context.newPage();
+    await page.goto(home);
     await page.getByText("Черновик восстановлен").waitFor();
     await open(page);
-    await checkPreview(page, ...base);
-    assert.equal(await reset().isDisabled(), true);
-    await page.locator("#close-palette").click();
-    await applyBasis(page, "corporate");
-    await open(page);
-    await checkPreview(page, ...base);
-
-    // Remove just the new field from the test profile to reproduce the previous draft format.
-    await custom(page).check();
-    await hex(page, "Цвет предложения").fill("#121212");
-    await page.locator("#save-palette").click();
-    await page.locator("#close-palette").click();
-    await saved(page);
-    await page.evaluate(async () => {
-      await new Promise((done, reject) => {
+    assert.equal(await hex(page, "Основной цвет").inputValue(), "#223344");
+    assert.equal((await storedPalette(page)).custom.main.background, "#223344");
+    assert.equal(await page.locator("#palette-notice").isVisible(), false);
+    await page.keyboard.press("Escape");
+    // Exercise migrations in the real draft store with two distinct old-format palettes.
+    const oldLocal = { mode: "custom", main: { background: "#112233", textMode: "auto", textColor: "#FFFFFF" }, proposal: { background: "#336699", textMode: "default", textColor: "#FFFFFF" } };
+    const oldDraft = { mode: "custom", main: { background: "#445566", textMode: "custom", textColor: "#FEDCBA" }, proposal: { background: "#885599", textMode: "auto", textColor: "#AABBCC" } };
+    for (const [legacyDraft, expectedMode, expectedColor] of [[oldDraft, "custom", "#445566"], [{ mode: "base" }, "base", "#112233"], [undefined, "custom", "#112233"]]) {
+      await page.evaluate(({ key, local, draft }) => new Promise((resolve, reject) => {
+        localStorage.setItem(key, JSON.stringify(local));
         const request = indexedDB.open("ssb-dev:support-services-builder-drafts", 1);
         request.onerror = () => reject(request.error);
         request.onsuccess = () => {
@@ -323,24 +224,27 @@ for (const [index, channel] of channels.entries()) {
           const store = tx.objectStore("proposals");
           const entry = store.get("/");
           entry.onsuccess = () => {
-            delete entry.result.proposal.palette;
+            if (draft) entry.result.proposal.palette = draft;
+            else delete entry.result.proposal.palette;
             store.put(entry.result, "/");
           };
-          tx.oncomplete = () => { db.close(); done(); };
-          tx.onabort = () => { db.close(); reject(tx.error); };
+          tx.oncomplete = () => { db.close(); resolve(); };
+          tx.onabort = () => reject(tx.error);
         };
-      });
-    });
-    await page.reload();
-    await page.getByText("Черновик восстановлен").waitFor();
-    await open(page);
-    await checkPreview(page, ...base);
-    assert.equal(await page.evaluate((key) => JSON.parse(localStorage.getItem(key)).proposal.background, storageKey), "#121212");
-    assert.equal(await reset().isEnabled(), true);
+      }), { key: storageKey, local: oldLocal, draft: legacyDraft });
+      await page.reload();
+      await page.getByText("Черновик восстановлен").waitFor();
+      await open(page);
+      assert.equal((await storedPalette(page)).mode, expectedMode);
+      assert.equal((await storedPalette(page)).custom.main.background, expectedColor);
+      if (expectedColor === "#445566") {
+        assert.equal((await storedPalette(page)).legacyFixed.main.background, "#112233");
+        assert.equal(await hex(page, "Основной цвет — цвет текста").inputValue(), "#FEDCBA");
+      }
+      await page.keyboard.press("Escape");
+    }
     assert.deepEqual(errors, []);
     assert.deepEqual(external, []);
-    console.log(`${channel}: document palette, draft, local settings, Word and Excel OK`);
-  } finally {
-    await browser.close();
-  }
+    console.log(channel + ": palette autosave, base/custom retention, errors, legacy migration, preview and Word/Excel OK");
+  } finally { await browser.close(); }
 }

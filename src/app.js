@@ -10,7 +10,7 @@ import { generateExcel } from "./excel.js";
 import { generateWord } from "./word.js";
 import { enablePwa } from "./pwa.js";
 import { createDraftAutosave, openDraftStore } from "./draft.js";
-import { documentPalette, readLocalPalette } from "./export-palette.js";
+import { paletteSettings, readLocalPalette, restorePaletteSettings, writeLocalPalette } from "./export-palette.js";
 import { setupPaletteDialog } from "./palette-dialog.js";
 
 const $ = (selector) => document.querySelector(selector);
@@ -38,6 +38,9 @@ let draftUnavailable = false;
 let draftTouched = false;
 let sourcesUnsaved = false;
 let hasSavedSources = false;
+let localPalette;
+let paletteReadFailed = false;
+let paletteUnsaved = false;
 const downloads = [...document.querySelectorAll("[data-format]")];
 const slaModes = [...document.querySelectorAll('input[name="sla-mode"]')];
 const slaFormats = [...document.querySelectorAll('input[name="sla-format"]')];
@@ -133,10 +136,24 @@ function updateClearSourcesButton() {
 function paletteForNewProposal() {
   notice("#palette-notice", "");
   try {
-    return readLocalPalette(window.localStorage);
+    localPalette = readLocalPalette(window.localStorage);
+    return paletteSettings(localPalette);
   } catch {
-    notice("#palette-notice", "Не удалось прочитать локальную палитру. Используется базовая.", true);
-    return documentPalette();
+    paletteReadFailed = true;
+    notice("#palette-notice", "Локальные настройки палитры недоступны. Изменения могут не сохраниться между запусками.", true);
+    return paletteSettings();
+  }
+}
+
+function persistPalette() {
+  try {
+    writeLocalPalette(window.localStorage, state.palette);
+    localPalette = state.palette;
+    paletteUnsaved = false;
+    notice("#palette-notice", "");
+  } catch {
+    paletteUnsaved = true;
+    notice("#palette-notice", "Изменения палитры применены к текущему предложению, но не сохранены локально. Проверьте хранилище браузера.", true);
   }
 }
 
@@ -745,7 +762,7 @@ function restoreProposal(saved) {
   Object.assign(state, {
     selected, services, overrides, documentOverrides, defaults: packageSettings(defaults), standard: packageSettings(standard),
     hasStandard, layer: layer === "local" ? "local" : "corporate", base, catalog, documentOptions: documentOptions(saved.documentOptions),
-    palette: documentPalette(saved.palette),
+    palette: paletteSettings(saved.palette),
     draftEditsPreserved: saved.draftEditsPreserved ?? Boolean(saved.conflict && (overrides.size || documentOverrides.size)),
     sections: restoreDocumentSources(saved.sections ?? (previousIntro ? { intro: { data: previousIntro } } : {})),
   });
@@ -756,7 +773,7 @@ function restoreProposal(saved) {
 }
 
 function hasUnsavedWork() {
-  return Boolean(draft?.unsaved || (draftUnavailable && draftTouched) || sourcesUnsaved);
+  return Boolean(draft?.unsaved || (draftUnavailable && draftTouched) || sourcesUnsaved || paletteUnsaved);
 }
 
 async function startDraft() {
@@ -773,6 +790,11 @@ async function startDraft() {
     if (saved) {
       restoreProposal(saved);
       notice("#draft-notice", "Черновик восстановлен", false, true);
+    }
+    state.palette = restorePaletteSettings(localPalette, saved?.palette);
+    if (!paletteReadFailed && (localPalette || saved?.palette) && JSON.stringify(localPalette) !== JSON.stringify(state.palette)) {
+      state.palette.updatedAt ||= Date.now();
+      persistPalette();
     }
     draft = createDraftAutosave(store, snapshotProposal, draftStatus);
   } catch {
@@ -793,8 +815,11 @@ window.addEventListener("beforeunload", (event) => {
 state.palette = paletteForNewProposal();
 setupPaletteDialog({
   getPalette: () => state.palette,
-  changePalette: (palette) => { state.palette = palette; draftChanged(); },
-  report: (message, error) => notice("#palette-notice", message, error),
+  changePalette: (palette) => {
+    state.palette = { ...paletteSettings(palette), updatedAt: Math.max(Date.now(), (state.palette.updatedAt ?? 0) + 1) };
+    persistPalette();
+    draftChanged();
+  },
 });
 void startDraft();
 enablePwa({

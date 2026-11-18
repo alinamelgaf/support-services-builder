@@ -48,6 +48,7 @@ async function checkExports(page) {
 }
 async function customPalette(page) {
   await page.locator("#open-palette").click();
+  await page.locator('[name="palette-mode"][value="custom"]').check();
   await page.getByRole("textbox", { name: "Основной цвет — HEX", exact: true }).fill("#334455");
   await page.locator('[name="palette-text-main"][value="auto"]').check();
   await page.locator("#close-palette").click();

@@ -18,7 +18,7 @@
     </div>
   </header>
 
-  <main class="shell"><!-- DEV_NOTICE -->
+  <main class="shell">
     <div class="intro">
       <div class="panel-heading intro-heading">
         <div class="intro-copy">
@@ -184,32 +184,7 @@
         <a href="https://get-color.ru/#000000" target="_blank" rel="noopener noreferrer">Get Color</a>
         <a href="https://color.adobe.com/create/color-wheel" target="_blank" rel="noopener noreferrer">Adobe Color</a>
       </div>
-      <div class="actions palette-actions">
-        <button type="button" class="button" id="save-palette">Зафиксировать локально</button>
-        <button type="button" class="button" id="reset-palette" aria-haspopup="dialog" disabled>Сбросить локальную палитру</button>
-      </div>
-      <div id="palette-success" class="notice palette-success" role="status" hidden>
-        <span aria-hidden="true">✓</span>
-        <div><strong id="palette-success-heading"></strong><p id="palette-success-detail"></p></div>
-      </div>
       <p id="palette-notice" class="notice" role="status" hidden></p>
-    </div>
-  </dialog>
-  <dialog id="palette-reset-dialog" aria-labelledby="palette-reset-heading" aria-describedby="palette-reset-details">
-    <div class="panel-heading">
-      <h2 id="palette-reset-heading">Сбросить локальную палитру?</h2>
-      <button type="button" class="button palette-close" aria-label="Закрыть подтверждение" data-cancel-reset>×</button>
-    </div>
-    <div class="palette-body">
-      <div id="palette-reset-details">
-        <p>Будет удалена локально сохранённая палитра. Для новых предложений будет использоваться «Базовая».</p>
-        <p>Текущее предложение также переключится на «Базовая».</p>
-        <p>Ранее сохранённые другие предложения не изменятся.</p>
-      </div>
-      <div class="actions palette-actions">
-        <button type="button" class="button" data-cancel-reset autofocus>Отмена</button>
-        <button type="button" class="button button-danger" id="confirm-palette-reset">Сбросить</button>
-      </div>
     </div>
   </dialog>
   <template id="palette-fields">
