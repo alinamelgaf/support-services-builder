@@ -264,8 +264,14 @@ dialog .service-id { margin: 0 0 var(--space-xs); }
 .sla-modes, .sla-formats { display: grid; gap: var(--space-xs); margin: var(--space-xs) 0 var(--space-xs) var(--space-xl); }
 .defaults-tools { margin: 0 var(--panel-inset) var(--space-m); padding: var(--space-m); border: 1px solid var(--line); border-radius: var(--radius-panel); }
 .defaults-tools h3 { margin: 0; }
-#defaults-layer { color: var(--muted); font-size: var(--text-small); overflow-wrap: anywhere; }
-.defaults-tools .actions { margin-top: var(--space-s); }
+#basis-status { color: var(--muted); font-size: var(--text-small); overflow-wrap: anywhere; }
+.basis-toolbar { display: flex; justify-content: space-between; align-items: center; gap: var(--space-m); flex-wrap: wrap; margin-top: var(--space-s); }
+.basis-options { display: flex; gap: var(--space-s); flex-wrap: wrap; }
+.basis-options label { display: inline-flex; align-items: center; gap: var(--space-s); padding: var(--space-s); border: 1px solid var(--line); border-radius: var(--radius-control); font-size: var(--text-label); cursor: pointer; }
+.basis-options label:has(:checked) { background: var(--green-pale); border-color: #68a493; }
+.basis-options label:has(:disabled) { color: var(--muted); cursor: default; }
+#basis-dialog { --dialog-width: 520px; }
+.setup > fieldset { margin-top: var(--space-m); }
 .comparison .defaults-tools .notice { margin: var(--space-s) 0 0; }
 
 @media (max-width: 950px) {

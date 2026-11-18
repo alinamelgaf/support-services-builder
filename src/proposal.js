@@ -19,14 +19,11 @@ export function defaultSelection(id, code, defaults = BUILTIN_DEFAULTS) {
   return { included: value !== "-", parameter: ["+", "-"].includes(value) ? "" : value };
 }
 
-function textInput(value, label, singleLine = false) {
+function textInput(value, label) {
   if (typeof value !== "string" || XML_INVALID.test(value)) {
     throw new Error(`Поле «${label}» содержит недопустимое значение.`);
   }
   const normalized = value.replace(/\r\n?/g, "\n");
-  if (singleLine && (normalized.includes("\n") || normalized.length > 180)) {
-    throw new Error(`Поле «${label}» должно содержать до 180 символов в одной строке.`);
-  }
   return normalized;
 }
 
@@ -53,15 +50,13 @@ export function buildServiceRows(services, {
 }
 
 export function buildProposal(services, {
-  title = "", client = "", selected, sections = {}, document, confluenceBases = [], palette, ...settings
+  selected, sections = {}, document, confluenceBases = [], palette, ...settings
 }) {
   if (!services.length) throw new Error("Загрузите каталог с корректными карточками услуг.");
-  const titleText = textInput(title, "Название предложения", true).trim() || DEFAULT_TITLE;
-  const clientText = textInput(client, "Клиент", true).trim();
   const selectedIndex = OPTIONS.findIndex(({ code }) => code === selected);
   if (selectedIndex < 0) throw new Error("Выберите один вариант поддержки.");
   return {
-    title: titleText, clientLine: clientText ? `Клиент — ${clientText}` : "", selectedIndex, palette: documentPalette(palette),
+    title: DEFAULT_TITLE, clientLine: "", selectedIndex, palette: documentPalette(palette),
     rows: buildServiceRows(services, { ...settings, forExport: true }).map((row) => ({
       ...row, description: withoutSourceLinks(row.description, confluenceBases),
       conditions: withoutSourceLinks(row.conditions, confluenceBases),

@@ -1,8 +1,8 @@
 import { MAX_BYTES } from "./catalog.js";
 import { createImportBatch, queryUrl, SOURCE_KEY, SOURCE_TYPES, validateSources } from "./confluence.js";
-import { buildProposal, buildServiceRows, DEFAULT_OPTION, defaultSelection, isIncludedInDocument, OPTIONS } from "./proposal.js";
+import { buildProposal, DEFAULT_OPTION, defaultSelection, isIncludedInDocument, OPTIONS } from "./proposal.js";
 import {
-  DEFAULTS_FILENAME, defaultDifferences, initialDefaults, overlayDefaults, parseDefaults, readDefaults, serializeDefaults, snapshotDefaults, writeDefaults,
+  captureTemplate, initialDefaults, LEGACY_STORAGE_KEY, overlayDefaults, readTemplate, STORAGE_KEY, TEMPLATE_STORAGE_KEY, templateServiceSettings, writeTemplate,
 } from "./package-defaults.js";
 import { documentOptions, restoreDocumentSources, sectionReason, SECTION_LABELS } from "./document-sections.js";
 import { renderRich } from "./rich-dom.js";
@@ -36,7 +36,6 @@ let sources = validateSources();
 let draft;
 let draftUnavailable = false;
 let draftTouched = false;
-let defaultsUnsaved = false;
 let sourcesUnsaved = false;
 const downloads = [...document.querySelectorAll("[data-format]")];
 const slaModes = [...document.querySelectorAll('input[name="sla-mode"]')];
@@ -110,7 +109,8 @@ function notice(selector, message, error = false, temporary = false) {
 }
 
 function hasDraftChanges() {
-  return state.overrides.size || state.documentOverrides.size;
+  try { return JSON.stringify(currentConfiguration()) !== JSON.stringify(basisConfiguration(state.layer)); }
+  catch { return true; }
 }
 
 function draftChanged() {
@@ -133,16 +133,12 @@ function paletteForNewProposal() {
 function setBusy(busy) {
   state.busy = busy;
   $("#upload").disabled = $("#catalog-file").disabled = busy;
-  $("#reset").disabled = busy || !state.local;
-  $("#apply-standard").disabled = busy || !state.hasStandard;
-  $("#save-defaults").disabled = busy || !state.services.length;
-  $("#import-defaults").disabled = $("#defaults-file").disabled = busy;
-  $("#export-defaults").disabled = busy || !state.local;
   $("#save-sources").disabled = $("#reset-batch").disabled = busy;
-  $("#new-proposal").disabled = $("#open-palette").disabled = busy;
+  $("#open-palette").disabled = busy;
   $("#open-sources").disabled = busy;
   for (const button of downloads) button.disabled = busy || !state.services.length;
   renderDocumentOptions();
+  showDefaultsStatus();
 }
 
 function renderOptions() {
@@ -354,7 +350,7 @@ async function importCatalog(files) {
       if (result.issues.length) $("#issues").open = true;
       throw new Error("В выбранном файле нет корректных карточек услуг. Проверьте поля Page Properties и сообщения импорта.");
     }
-    const dirty = Boolean(hasDraftChanges());
+    const dirty = Boolean(state.services.length && hasDraftChanges());
     const initial = !state.services.length;
     const next = result.usableStandard || !state.hasStandard ? result.standard : state.standard;
     state.hasStandard ||= result.usableStandard;
@@ -368,8 +364,7 @@ async function importCatalog(files) {
       renderServices();
     } else {
       if (initial && state.local) state.layer = "local";
-      state.defaults = overlayDefaults(next, state.layer === "local" ? state.local : null);
-      clearDraft();
+      applyLayer(state.layer, false);
     }
     const kind = result.legacy ? "прежний формат каталога" : "страницы REST объединены";
     const recognized = [
@@ -409,23 +404,6 @@ function downloadFile(file, filename) {
   setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
-function clearDraft() {
-  state.overrides.clear();
-  state.documentOverrides.clear();
-  renderServices();
-  notice("#export-notice", "");
-}
-
-$("#new-proposal").addEventListener("click", () => {
-  if (!window.confirm("Начать новое предложение? Оно заменит текущий черновик. Загруженный каталог останется доступен.")) return;
-  $("#client").value = $("#title").value = "";
-  state.selected = DEFAULT_OPTION;
-  state.documentOptions = documentOptions();
-  state.palette = paletteForNewProposal();
-  for (const radio of document.querySelectorAll('input[name="proposal-variant"]')) radio.checked = radio.value === state.selected;
-  applyLayer(state.layer);
-});
-
 function serviceSettings() {
   return {
     overrides: state.overrides, defaults: state.defaults.values,
@@ -433,72 +411,113 @@ function serviceSettings() {
   };
 }
 
-function applyDefaults(settings) {
-  let saved = false;
-  try {
-    writeDefaults(window.localStorage, settings);
-    saved = true;
-  } catch {
-    // Копия в памяти доступна для скачивания независимо от хранилища.
-  }
-  state.local = settings;
-  defaultsUnsaved = !saved;
-  applyLayer("local");
-  notice("#defaults-notice", saved
-    ? "Настройки по умолчанию сохранены локально."
-    : "Настройки применены в этой вкладке. Браузер не подтвердил сохранение. Скачайте файл настроек и загрузите его при следующем открытии.", !saved, saved);
+function currentConfiguration() {
+  return captureTemplate(state.services, serviceSettings(), state.selected, state.documentOptions);
+}
+
+function basisConfiguration(layer) {
+  const template = layer === "local" ? state.local : null;
+  return captureTemplate(state.services, templateServiceSettings(state.standard, template, state.services),
+    template?.selected ?? DEFAULT_OPTION, template?.documentOptions);
 }
 
 function showDefaultsStatus() {
-  const active = state.layer === "local"
-    ? "Используются локальные настройки менеджера"
-    : state.hasStandard ? "Используется стандарт Confluence"
-      : "Стандарт Confluence не загружен";
-  const differences = state.hasStandard ? defaultDifferences(state.standard, state.local, state.services) : [];
-  const details = [];
-  if (differences.length) details.push(`Локальные отличия: ${differences.join(", ")}`);
-  if (hasDraftChanges()) details.push("Есть правки предложения");
-
-  const status = $("#defaults-layer");
-  status.textContent = [active, ...details].join(" · ");
+  for (const radio of document.querySelectorAll('input[name="proposal-basis"]')) {
+    radio.checked = radio.value === state.layer;
+    radio.disabled = state.busy || !state.services.length || (radio.value === "local" ? !state.local : !state.hasStandard);
+  }
+  let valid = true;
+  try { currentConfiguration(); } catch { valid = false; }
+  $("#save-template").disabled = state.busy || !state.services.length || !valid;
+  const status = $("#basis-status");
+  status.textContent = !state.services.length ? "Загрузите каталог Confluence"
+    : state.layer === "corporate" && !state.hasStandard ? "Стандарт Confluence не загружен"
+    : state.layer === "local" && !state.local ? "Мой шаблон недоступен. Показана конфигурация черновика."
+    : hasDraftChanges() ? "Есть изменения текущего предложения" : "";
+  status.hidden = !status.textContent;
 }
 
-function applyLayer(layer) {
+function applyLayer(layer, save = true) {
+  const template = layer === "local" ? state.local : null;
+  const settings = templateServiceSettings(state.standard, template, state.services);
   state.layer = layer;
-  state.defaults = overlayDefaults(state.standard, layer === "local" ? state.local : null);
+  state.defaults = { values: settings.defaults, includedInDocument: settings.documentDefaults };
+  state.overrides = settings.overrides;
+  state.documentOverrides = settings.documentOverrides;
+  state.selected = template?.selected ?? DEFAULT_OPTION;
+  state.documentOptions = documentOptions(template?.documentOptions);
   state.draftEditsPreserved = false;
-  clearDraft();
+  for (const radio of document.querySelectorAll('input[name="proposal-variant"]')) radio.checked = radio.value === state.selected;
+  renderServices();
+  renderDocumentOptions();
   showDefaultsStatus();
-  setBusy(state.busy);
-  draftChanged();
+  notice("#export-notice", "");
+  if (save) draftChanged();
 }
 
-function fixDefaults() {
-  if (state.busy || !state.services.length) return;
-  if (!window.confirm("Сохранить состав и параметры пакетов и включение услуг в документ по умолчанию? Ранее сохранённые настройки будут заменены.")) return;
-  try {
-    const rows = buildServiceRows(state.services, serviceSettings());
-    applyDefaults(snapshotDefaults(state.local ?? initialDefaults(), rows));
-  } catch (error) {
-    notice("#defaults-notice", error.message, true);
-  }
+let confirmedBasisAction;
+function confirmBasis(title, detail, label, action) {
+  $("#basis-dialog-heading").textContent = title;
+  $("#basis-dialog-detail").textContent = detail;
+  $("#confirm-basis").textContent = label;
+  confirmedBasisAction = action;
+  $("#basis-dialog").showModal();
+}
+$("#basis-dialog").addEventListener("close", () => { confirmedBasisAction = undefined; });
+for (const button of document.querySelectorAll("[data-close-basis]")) {
+  button.addEventListener("click", () => $("#basis-dialog").close());
+}
+$("#confirm-basis").addEventListener("click", () => {
+  const action = confirmedBasisAction;
+  confirmedBasisAction = undefined;
+  $("#basis-dialog").close();
+  action?.();
+});
+
+function chooseBasis(layer) {
+  showDefaultsStatus();
+  const changed = hasDraftChanges();
+  let sameTarget = false;
+  try { sameTarget = JSON.stringify(currentConfiguration()) === JSON.stringify(basisConfiguration(layer)); } catch { /* Invalid edits require confirmation. */ }
+  if (changed && !sameTarget) {
+    confirmBasis("Применить другую основу?",
+      "Текущие изменения предложения будут заменены настройками выбранной основы. Сохранённый личный шаблон и палитра документа не изменятся",
+      "Применить", () => applyLayer(layer));
+  } else applyLayer(layer);
+}
+for (const radio of document.querySelectorAll('input[name="proposal-basis"]')) {
+  radio.addEventListener("change", () => chooseBasis(radio.value));
+  radio.addEventListener("click", () => {
+    if (radio.value === state.layer && hasDraftChanges()) chooseBasis(radio.value);
+  });
 }
 
-async function importDefaults(file) {
-  if (!file || state.busy) return;
-  setBusy(true);
+function saveMyTemplate() {
   try {
-    if (file.size > MAX_BYTES) throw new Error("Размер файла настроек превышает 64 МБ.");
-    const settings = parseDefaults(new TextDecoder("utf-8", { fatal: true }).decode(await file.arrayBuffer()));
-    if (!window.confirm("Заменить локальные настройки настройками из файла? Текущие правки пакетов будут сброшены.")) return;
-    applyDefaults(settings);
-  } catch (error) {
-    notice("#defaults-notice", error instanceof TypeError ? "Не удалось прочитать файл настроек в кодировке UTF-8." : error.message, true);
-  } finally {
-    $("#defaults-file").value = "";
-    setBusy(false);
+    const template = currentConfiguration();
+    writeTemplate(window.localStorage, template);
+    const existed = Boolean(state.local);
+    state.local = template;
+    state.layer = "local";
+    showDefaultsStatus();
+    draftChanged();
+    notice("#defaults-notice", existed ? "Мой шаблон обновлён" : "Мой шаблон сохранён локально", false, true);
+  } catch {
+    notice("#defaults-notice", "Не удалось сохранить мой шаблон. Проверьте хранилище браузера.", true);
   }
 }
+$("#save-template").addEventListener("click", () => {
+  try { state.local = readTemplate(window.localStorage); }
+  catch {
+    notice("#defaults-notice", "Не удалось прочитать мой шаблон. Сохранение отменено.", true);
+    return;
+  }
+  if (state.local) {
+    confirmBasis("Заменить мой шаблон?",
+      "Текущие настройки предложения заменят ранее сохранённый шаблон. Предыдущую версию шаблона восстановить не получится",
+      "Заменить шаблон", saveMyTemplate);
+  } else saveMyTemplate();
+});
 
 async function exportProposal(format) {
   if (state.busy || !state.services.length) return;
@@ -509,8 +528,6 @@ async function exportProposal(format) {
     return;
   }
   const form = {
-    client: $("#client").value,
-    title: $("#title").value,
     selected: state.selected,
     ...serviceSettings(),
     sections: state.sections,
@@ -542,39 +559,35 @@ $("#open-sources").addEventListener("click", () => $("#sources-dialog").showModa
 $("#close-sources").addEventListener("click", () => $("#sources-dialog").close());
 $("#show-release-notes").addEventListener("click", () => $("#release-notes").showModal());
 $("#close-release-notes").addEventListener("click", () => $("#release-notes").close());
-$("#save-defaults").addEventListener("click", fixDefaults);
-$("#export-defaults").addEventListener("click", () => downloadFile(
-  new Blob([serializeDefaults(state.local)], { type: "application/json" }), DEFAULTS_FILENAME,
-));
-$("#import-defaults").addEventListener("click", () => $("#defaults-file").click());
-$("#defaults-file").addEventListener("change", (event) => importDefaults(event.target.files[0]));
-$("#reset").addEventListener("click", () => {
-  if (!window.confirm("Восстановить локальные настройки? Текущие правки пакетов будут сброшены.")) return;
-  applyLayer("local");
-  notice("#defaults-notice", "Локальные настройки менеджера применены.", false, true);
-});
-$("#apply-standard").addEventListener("click", () => {
-  if (!window.confirm("Применить стандарт Confluence? Текущие правки пакетов будут сброшены. Сохранённые настройки менеджера останутся доступны.")) return;
-  applyLayer("corporate");
-  notice("#defaults-notice", "Применён стандарт Confluence.", false, true);
-});
 for (const button of downloads) {
   button.addEventListener("click", () => exportProposal(button.dataset.format));
 }
 
 try {
-  const saved = readDefaults(window.localStorage);
+  const saved = readTemplate(window.localStorage);
   if (saved) {
     state.local = saved;
     state.defaults = saved;
     state.layer = "local";
+    state.selected = saved.selected;
+    state.documentOptions = documentOptions(saved.documentOptions);
   }
 } catch {
-  notice("#defaults-notice", "Не удалось прочитать настройки из хранилища браузера. Можно загрузить файл настроек.", true);
+  notice("#defaults-notice", "Не удалось прочитать мой шаблон из хранилища браузера.", true);
 }
 renderOptions();
 showDefaultsStatus();
 setBusy(false);
+
+window.addEventListener("storage", (event) => {
+  if (event.storageArea !== window.localStorage || (event.key !== null && ![TEMPLATE_STORAGE_KEY, STORAGE_KEY, LEGACY_STORAGE_KEY].includes(event.key))) return;
+  try {
+    state.local = readTemplate(window.localStorage);
+    showDefaultsStatus();
+  } catch {
+    notice("#defaults-notice", "Не удалось прочитать мой шаблон из хранилища браузера.", true);
+  }
+});
 
 function resetBatch() {
   batch.reset();
@@ -646,7 +659,7 @@ function snapshotProposal() {
   const { selected, services, overrides, documentOverrides, defaults, standard, hasStandard, layer, base, catalog, draftEditsPreserved } = state;
   return {
     selected, services, overrides, documentOverrides, defaults, standard, hasStandard, layer, base, catalog, draftEditsPreserved,
-    client: $("#client").value, title: $("#title").value, sections: state.sections, documentOptions: state.documentOptions,
+    sections: state.sections, documentOptions: state.documentOptions,
     palette: state.palette,
   };
 }
@@ -663,28 +676,27 @@ function restoreProposal(saved) {
   ]));
   Object.assign(state, {
     selected, services, overrides, documentOverrides, defaults: packageSettings(defaults), standard: packageSettings(standard),
-    hasStandard, layer, base, catalog, documentOptions: documentOptions(saved.documentOptions),
+    hasStandard, layer: layer === "local" ? "local" : "corporate", base, catalog, documentOptions: documentOptions(saved.documentOptions),
     palette: documentPalette(saved.palette),
     draftEditsPreserved: saved.draftEditsPreserved ?? Boolean(saved.conflict && (overrides.size || documentOverrides.size)),
     sections: restoreDocumentSources(saved.sections ?? (previousIntro ? { intro: { data: previousIntro } } : {})),
   });
-  $("#client").value = saved.client;
-  $("#title").value = saved.title;
   for (const radio of document.querySelectorAll('input[name="proposal-variant"]')) radio.checked = radio.value === selected;
   renderServices();
   showDefaultsStatus();
   renderCatalog();
 }
 
-for (const field of ["#client", "#title"]) $(field).addEventListener("input", draftChanged);
-
 function hasUnsavedWork() {
-  return Boolean(draft?.unsaved || (draftUnavailable && draftTouched) || defaultsUnsaved || sourcesUnsaved);
+  return Boolean(draft?.unsaved || (draftUnavailable && draftTouched) || sourcesUnsaved);
 }
 
 async function startDraft() {
   const main = $("main");
-  const draftStatus = (message, error) => notice("#draft-notice", message, error, !error && message !== "Сохраняем черновик…");
+  const draftStatus = (message, error) => {
+    notice("#draft-notice", message, error);
+    if (!error) $("#draft-notice").hidden = true;
+  };
   main.inert = true;
   setBusy(true);
   try {
@@ -692,7 +704,7 @@ async function startDraft() {
     const saved = await store.load();
     if (saved) {
       restoreProposal(saved);
-      draftStatus("Черновик восстановлен");
+      notice("#draft-notice", "Черновик восстановлен", false, true);
     }
     draft = createDraftAutosave(store, snapshotProposal, draftStatus);
   } catch {

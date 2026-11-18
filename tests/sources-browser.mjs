@@ -1,3 +1,4 @@
+import { applyBasis } from "./basis-helper.mjs";
 import assert from "node:assert/strict";
 import { mkdir } from "node:fs/promises";
 import { join } from "node:path";
@@ -42,7 +43,7 @@ for (const channel of channels) {
     assert.equal(await status(page).textContent(), "Данные Confluence не загружены");
     assert.equal(await page.locator(".catalog-panel, #catalog-heading").count(), 0);
     assert.equal(await page.locator("main > .panel").first().getAttribute("aria-labelledby"), "proposal-heading");
-    assert.deepEqual(await page.locator(".proposal-heading button").allTextContents(), ["Новое предложение", "Источники Confluence", "Загрузить JSON"]);
+    assert.deepEqual(await page.locator(".proposal-heading button").allTextContents(), ["Источники Confluence", "Загрузить JSON"]);
     assert.deepEqual(await page.locator(".button-primary").evaluateAll((buttons) => buttons.map((button) => button.textContent)),
       ["Загрузить JSON", "Скачать Excel", "Скачать Word"]);
     const normalStyles = await page.locator("button.button:not(.button-primary):not(.button-danger):enabled, a.button:not([hidden])").evaluateAll((buttons) =>
@@ -82,8 +83,7 @@ for (const channel of channels) {
     assert.equal(url.searchParams.get("limit"), "50");
     await page.locator("#close-sources").click();
 
-    await page.locator("#client").fill("Учебная организация");
-    await page.locator("#title").fill("Предложение по техническому сопровождению");
+
     await page.locator('#variants input[value="Extended"]').check();
     await waitSaved(page);
     if (channel === channels[0] && output) {
@@ -165,13 +165,12 @@ for (const channel of channels) {
     assert.equal(await page.locator("#catalog-notice").isVisible(), false);
     await page.locator("#close-sources").click();
 
-    page.once("dialog", (dialog) => dialog.accept());
-    await page.locator("#new-proposal").click();
+    await applyBasis(page,"corporate");
     await waitSaved(page);
     assert.equal(await count(page), 6);
     assert.equal(await status(page).getAttribute("class"), "confluence-status success");
     assert.equal(await page.locator("#source-space").inputValue(), REFERENCE_SOURCES.space);
-    assert.equal(await page.locator("#client").inputValue(), "");
+
     for (const format of ["word", "excel"]) {
       const [download] = await Promise.all([page.waitForEvent("download"), page.locator(`[data-format="${format}"]`).click()]);
       assert.equal(await download.failure(), null);

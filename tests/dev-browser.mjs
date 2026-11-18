@@ -1,3 +1,4 @@
+import { saveTemplate } from "./basis-helper.mjs";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import { createServer } from "node:http";
@@ -29,7 +30,7 @@ const labels = { ...SOURCES.labels };
 const catalog = { name: "demo.json", mimeType: "application/json", buffer: Buffer.from(JSON.stringify(fixture({ unknown: false }))) };
 const storageKeys = {
   sources: "ssb:confluence-sources:v1",
-  defaults: "support-services-builder-defaults:v2",
+  defaults: "support-services-builder-defaults:v3",
   legacy: "support-services-builder-defaults:v1",
 };
 const parameter = (page) => page.getByRole("textbox", { name: "Параметр TS-1 в Standard", exact: true });
@@ -44,16 +45,15 @@ async function save(page, space, value) {
   await page.locator("#close-sources").click();
   await page.locator("#catalog-file").setInputFiles(catalog);
   await parameter(page).fill(value);
-  page.once("dialog", (dialog) => dialog.accept());
-  await page.locator("#save-defaults").click();
-  await page.locator("#client").fill(value);
+  await saveTemplate(page);
+
   await page.getByText("Черновик сохранён на этом устройстве.").waitFor({ state: "attached" });
 }
 
 async function restore(page, space, value) {
   await page.getByText("Черновик восстановлен").waitFor();
   assert.equal(await page.locator("#source-space").inputValue(), space);
-  assert.equal(await page.locator("#client").inputValue(), value);
+
   assert.equal(await parameter(page).inputValue(), value);
 }
 
@@ -171,10 +171,10 @@ async function verify(channel) {
     await page.getByText("Тестовая версия · Данные хранятся отдельно от рабочей версии", { exact: true }).waitFor();
     assert.equal(await page.locator("#version").textContent(), "Версия " + version + "-dev");
     await page.waitForFunction(() => !document.querySelector("main").inert);
-    assert.equal(await page.locator("#client").inputValue(), "");
+
     assert.equal(await page.locator("#source-space").inputValue(), "");
     assert.equal(await page.locator("#table-wrap").isVisible(), false);
-    assert.equal(await page.locator("#reset").isDisabled(), true);
+    assert.equal(await page.locator("input[name=proposal-basis][value=local]").isDisabled(), true);
     await save(page, "DEV", "Тестовое предложение");
     const stored = await page.evaluate((keys) => keys.map((key) =>
       [localStorage.getItem(key), localStorage.getItem("ssb-dev:" + key)]), [storageKeys.sources, storageKeys.defaults]);
@@ -223,7 +223,7 @@ async function verify(channel) {
     await testTab.goto(home + "test/");
     assert.equal(await testTab.title(), "SSB — Тестовая версия");
     await testTab.waitForFunction(() => !document.querySelector("main").inert);
-    assert.equal(await testTab.locator("#client").inputValue(), "");
+
     await save(testTab, "DEV", "Тестовое предложение");
     await testTab.reload();
     await restore(testTab, "DEV", "Тестовое предложение");

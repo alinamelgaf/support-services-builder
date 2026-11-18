@@ -108,8 +108,8 @@ for (const [index, channel] of channels.entries()) {
       assert.ok(word.text.includes("Пример " + code));
       assert.ok(word.text.includes(reaction));
     }
-    await page.locator("#client").fill("Учебная организация");
-    await page.locator("#title").fill("Учебное предложение по техническому сопровождению");
+
+
     await mode(page, "all").check();
     assert.equal(await slaFormat(page, "comparison").isChecked(), true);
     const samplePath = (layout, format) => output && !index
@@ -120,7 +120,7 @@ for (const [index, channel] of channels.entries()) {
         const file = await exportFile(page, format, samplePath(layout, format));
         for (const name of names) assert.ok(file.sections.includes(name));
         assert.match(file.text, /Пример Extended/);
-        assert.match(file.text, /Учебная организация/);
+        assert.match(file.text, /Предложение по техническому сопровождению/);
         assert.match(file.text, /20 минут/);
         if (layout === "separate") assert.match(file.text, /Extended ✓/);
         else if (format === "word") {
@@ -177,7 +177,7 @@ for (const [index, channel] of channels.entries()) {
     assert.equal(await mode(page, "all").isChecked(), true);
     assert.equal(await slaFormat(page, "separate").isChecked(), true);
     assert.equal(await variant(page, "Extended").isChecked(), true);
-    assert.equal(await page.locator("#client").inputValue(), "Учебная организация");
+
     for (const format of ["excel", "word"]) {
       const restored = await exportFile(page, format);
       assert.match(restored.text, /20 минут/);

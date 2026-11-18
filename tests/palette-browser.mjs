@@ -1,3 +1,4 @@
+import { applyBasis } from "./basis-helper.mjs";
 import assert from "node:assert/strict";
 import { mkdir, readFile } from "node:fs/promises";
 import { join } from "node:path";
@@ -120,12 +121,6 @@ async function checkDownloads(page, name, colors, destination) {
   }
 }
 
-async function newProposal(page, confirm) {
-  page.once("dialog", (dialog) => confirm ? dialog.accept() : dialog.dismiss());
-  await page.locator("#new-proposal").click();
-  if (confirm) await saved(page);
-}
-
 if (output) await mkdir(output, { recursive: true });
 for (const [index, channel] of channels.entries()) {
   const browser = await chromium.launch({ channel });
@@ -145,8 +140,8 @@ for (const [index, channel] of channels.entries()) {
     for (const key of ["sla", "severity", "assumptions", "glossary"]) await page.locator("#include-" + key).check();
     await page.locator('[name="sla-mode"][value="all"]').check();
     await page.locator('[name="sla-format"][value="comparison"]').check();
-    await page.locator("#client").fill("Учебная организация");
-    await page.locator("#title").fill("Учебное предложение по техническому сопровождению");
+
+
     await open(page);
     const base = ["234C5E", "FFFFFF", "00AD21", "FFFFFF", "E0F5E4"];
     const reset = () => page.locator("#reset-palette");
@@ -237,12 +232,16 @@ for (const [index, channel] of channels.entries()) {
     await checkPreview(page, ...customColors);
     await hex(page, "Основной цвет").fill("#332244");
     await page.locator("#close-palette").click();
-    await newProposal(page, false);
+    await applyBasis(page, "corporate", false);
     await open(page);
     assert.equal(await hex(page, "Основной цвет").inputValue(), "#332244");
     await page.locator("#close-palette").click();
-    await newProposal(page, true);
-    assert.equal(await page.locator("#client").inputValue(), "");
+    await applyBasis(page, "corporate");
+    await open(page);
+    assert.equal(await hex(page,"Основной цвет").inputValue(),"#332244");
+    await hex(page,"Основной цвет").fill("#F7DC94");
+    await page.locator("#close-palette").click();
+
     assert.match(await page.locator("#confluence-status").textContent(), /6 из 6 услуг/);
     await page.locator('#variants input[value="Extended"]').check();
     await page.locator("#include-sla").check();
@@ -304,7 +303,7 @@ for (const [index, channel] of channels.entries()) {
     await checkPreview(page, ...base);
     assert.equal(await reset().isDisabled(), true);
     await page.locator("#close-palette").click();
-    await newProposal(page, true);
+    await applyBasis(page, "corporate");
     await open(page);
     await checkPreview(page, ...base);
 

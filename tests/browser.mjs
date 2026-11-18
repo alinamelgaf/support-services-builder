@@ -1,3 +1,4 @@
+import { applyBasis, saveTemplate } from "./basis-helper.mjs";
 import assert from "node:assert/strict";
 import { createHash, X509Certificate } from "node:crypto";
 import { mkdir, mkdtemp, readFile, realpath, rm } from "node:fs/promises";
@@ -162,22 +163,22 @@ async function checkStandalone(browser) {
     assert.equal(await page.locator("#include-intro").isChecked(), true);
     await standardParam(page).fill("7 часов локально");
     await page.getByRole("checkbox", { name: "Включить в документ TS-1.A", exact: true }).uncheck();
-    await dialog(page, "#save-defaults", /сохранённые настройки будут заменены/i);
-    await page.getByText(/Настройки по умолчанию сохранены/).waitFor();
+    await saveTemplate(page);
+    await page.getByText("Мой шаблон сохранён локально", {exact:true}).waitFor();
     await standardParam(page).fill("8 часов в черновике");
     await upload(page, fixture({ parameter: "18 часов", extra: true }));
-    await page.getByText(/Есть правки предложения/).waitFor();
-    const differences = page.locator("#defaults-layer");
+    await page.getByText("Есть изменения текущего предложения", {exact:true}).waitFor();
+    const differences = page.locator("input[name=proposal-basis][value=local]");
     assert.equal(await differences.isVisible(), true);
-    assert.match(await differences.textContent(), /Используются локальные настройки менеджера.*TS-1, TS-1\.A/);
+
     assert.equal(await standardParam(page).inputValue(), "8 часов в черновике");
     assert.equal(await page.getByRole("textbox", { name: "Параметр TS-3.B в Extended", exact: true }).inputValue(), "6 часов");
-    await dialog(page, "#apply-standard", /правки.*будут сброшены/, false);
+    await applyBasis(page,"corporate",false);
     assert.equal(await standardParam(page).inputValue(), "8 часов в черновике");
-    await dialog(page, "#apply-standard", /сохранённые настройки менеджера останутся/i);
+    await applyBasis(page,"corporate");
     assert.equal(await standardParam(page).inputValue(), "18 часов");
-    assert.match(await differences.textContent(), /Используется стандарт Confluence.*TS-1, TS-1\.A/);
-    await dialog(page, "#reset", /Восстановить локальные настройки/);
+
+    await applyBasis(page,"local");
     assert.equal(await standardParam(page).inputValue(), "7 часов локально");
     assert.equal(await page.locator("#include-intro").isChecked(), true);
     const excel = await exportFile(page, "excel", "xl/sharedStrings.xml");
@@ -244,7 +245,7 @@ async function checkHosted(channel) {
     await configure(page);
     await upload(page, fixture());
     await standardParam(page).fill("9 часов в сохранённом профиле");
-    await dialog(page, "#save-defaults", /сохранённые настройки будут заменены/i);
+    await saveTemplate(page);
     await page.getByText("Черновик сохранён на этом устройстве.").waitFor({ state: "attached" });
     await context.setOffline(true);
     await page.reload();
@@ -263,11 +264,12 @@ async function checkHosted(channel) {
     const legacyIntroEditor = await page.locator("#intro-text").count() === 1;
     if (legacyIntroEditor) await page.locator("#intro-text").fill("Локальный вводный текст старой версии");
     else await page.locator("#include-intro").uncheck();
-    await page.locator("#client").fill("Учебный клиент");
-    await page.locator("#title").fill("Учебное предложение");
+
+
     await page.getByRole("checkbox", { name: "Включить в документ TS-1.A", exact: true }).uncheck();
     await page.getByText("Черновик сохранён на этом устройстве.").waitFor({ state: "attached" });
-    await stale.locator("#client").fill("Учебная правка из другой вкладки");
+
+    await standardParam(stale).fill("Правка из другой вкладки");
     await stale.getByText(/Черновик изменён в другой вкладке/).waitFor();
     await stale.close({ runBeforeUnload: false });
 
@@ -291,8 +293,8 @@ async function checkHosted(channel) {
     assert.equal(await standardParam(page).inputValue(), "Черновик перед обновлением");
     assert.equal(await page.getByRole("radio", { name: /^Extended/ }).isChecked(), true);
     assert.equal(await page.locator("#include-intro").isChecked(), legacyIntroEditor);
-    assert.equal(await page.locator("#client").inputValue(), "Учебный клиент");
-    assert.equal(await page.locator("#title").inputValue(), "Учебное предложение");
+
+
     assert.equal(await page.getByRole("checkbox", { name: "Включить в документ TS-1.A", exact: true }).isChecked(), false);
     assert.match(await page.locator("#source-link").getAttribute("href"), /^https:\/\/wiki\.example\.invalid\//);
     if (legacyIntroEditor) {
@@ -323,12 +325,12 @@ async function checkHosted(channel) {
     assert.equal(await reopened.locator("#version").textContent(), `Версия ${updatedVersion}`);
     await reopened.getByText("Черновик восстановлен").waitFor();
     assert.equal(await standardParam(reopened).inputValue(), "Черновик перед обновлением");
-    const differences = reopened.locator("#defaults-layer");
+    const differences = reopened.locator("input[name=proposal-basis][value=local]");
     assert.equal(await differences.isVisible(), true);
-    assert.match(await differences.textContent(), /Используются локальные настройки менеджера.*TS-1/);
+
     const [guide] = await Promise.all([context.waitForEvent("page"), reopened.getByRole("link", { name: "Помощь" }).click()]);
     await guide.getByRole("heading", { name: /Руководство пользователя/ }).waitFor();
-    await dialog(reopened, "#reset", /Восстановить локальные настройки/);
+    await applyBasis(reopened,"local");
     assert.equal(await standardParam(reopened).inputValue(), "9 часов в сохранённом профиле");
     if (installed) console.log(`${channel}: PWA identity and installation survived the update and browser restart${canLaunch ? "; standalone relaunch verified" : ""}`);
   } finally {

@@ -41,7 +41,6 @@
       <div class="panel-heading proposal-heading">
         <h2 id="proposal-heading">Настройки предложения</h2>
         <div class="actions">
-          <button type="button" class="button" id="new-proposal" disabled>Новое предложение</button>
           <button type="button" class="button" id="open-sources" aria-haspopup="dialog" disabled>Источники Confluence</button>
           <button type="button" id="upload" class="button button-primary" disabled>Загрузить JSON</button>
           <input type="file" id="catalog-file" accept=".json,application/json" multiple hidden disabled>
@@ -49,16 +48,8 @@
       </div>
       <p id="confluence-status" class="confluence-status" role="status">Данные Confluence не загружены</p>
       <p class="draft-status" id="draft-notice" role="status" hidden></p>
-      <div class="fields">
-        <label>Клиент <span class="optional">необязательно</span>
-          <input type="text" id="client" maxlength="180" placeholder="Название компании">
-        </label>
-        <label>Название предложения <span class="optional">необязательно</span>
-          <input type="text" id="title" maxlength="180" placeholder="Заголовок для документов">
-        </label>
-      </div>
       <fieldset>
-        <legend>Вариант для клиента</legend>
+        <legend>Вариант поддержки</legend>
         <div class="variants" id="variants"></div>
       </fieldset>
       <fieldset class="document-options">
@@ -97,16 +88,15 @@
         </div>
       </div>
       <div class="defaults-tools">
-        <h3>Стандарт и настройки менеджера</h3>
-        <p id="defaults-layer" role="status"></p>
-        <div class="actions">
-          <button type="button" id="apply-standard" class="button" disabled>Применить стандарт Confluence</button>
-          <button type="button" id="save-defaults" class="button" disabled>Зафиксировать локально</button>
-          <button type="button" id="reset" class="button" disabled>Восстановить локальные настройки</button>
-          <button type="button" id="export-defaults" class="button" disabled>Скачать настройки</button>
-          <button type="button" id="import-defaults" class="button">Загрузить настройки</button>
-          <input type="file" id="defaults-file" accept=".json,application/json" hidden>
+        <h3>Основа предложения</h3>
+        <div class="basis-toolbar">
+          <fieldset class="basis-options" aria-label="Основа предложения">
+            <label><input type="radio" name="proposal-basis" value="corporate" checked disabled> Стандарт Confluence</label>
+            <label><input type="radio" name="proposal-basis" value="local" disabled> Мой шаблон</label>
+          </fieldset>
+          <button type="button" id="save-template" class="button" disabled>Сохранить как мой шаблон</button>
         </div>
+        <p id="basis-status" role="status" hidden></p>
         <p id="defaults-notice" class="notice" role="status" hidden></p>
       </div>
       <p id="export-notice" class="notice" role="status" hidden></p>
@@ -122,6 +112,19 @@
     </section>
   </main>
 
+  <dialog id="basis-dialog" aria-labelledby="basis-dialog-heading" aria-describedby="basis-dialog-detail">
+    <div class="panel-heading">
+      <h2 id="basis-dialog-heading"></h2>
+      <button type="button" class="button palette-close" data-close-basis aria-label="Закрыть подтверждение">×</button>
+    </div>
+    <div class="details-body">
+      <p id="basis-dialog-detail"></p>
+      <div class="actions palette-actions">
+        <button type="button" class="button" data-close-basis autofocus>Отмена</button>
+        <button type="button" class="button" id="confirm-basis"></button>
+      </div>
+    </div>
+  </dialog>
   <dialog id="sources-dialog" aria-labelledby="sources-heading">
     <div class="panel-heading">
       <h2 id="sources-heading">Источники Confluence</h2>

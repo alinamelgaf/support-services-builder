@@ -1,5 +1,6 @@
 import { XML_INVALID } from "./catalog.js";
-import { BUILTIN_DEFAULTS, OPTIONS } from "./proposal.js";
+import { BUILTIN_DEFAULTS, buildServiceRows, DEFAULT_OPTION, defaultSelection, OPTIONS } from "./proposal.js";
+import { documentOptions } from "./document-sections.js";
 
 const FORMAT = "support-services-builder-defaults";
 export const LEGACY_STORAGE_KEY = typeof __SSB_STORAGE_PREFIX__ === "string" && __SSB_STORAGE_PREFIX__
@@ -7,6 +8,7 @@ export const LEGACY_STORAGE_KEY = typeof __SSB_STORAGE_PREFIX__ === "string" && 
 export const STORAGE_KEY = typeof __SSB_STORAGE_PREFIX__ === "string" && __SSB_STORAGE_PREFIX__
   ? __SSB_STORAGE_PREFIX__ + FORMAT + ":v2" : FORMAT + ":v2";
 export const DEFAULTS_FILENAME = "ssb-defaults.json";
+export const TEMPLATE_STORAGE_KEY = (typeof __SSB_STORAGE_PREFIX__ === "string" ? __SSB_STORAGE_PREFIX__ : "") + FORMAT + ":v3";
 const isRecord = (value) => value !== null && typeof value === "object" && !Array.isArray(value);
 
 export function initialDefaults(values = BUILTIN_DEFAULTS) {
@@ -93,4 +95,65 @@ export function writeDefaults(storage, settings) {
   const text = serializeDefaults(settings);
   storage.setItem(STORAGE_KEY, text);
   if (storage.getItem(STORAGE_KEY) !== text) throw new Error("Запись в хранилище браузера не подтверждена.");
+}
+
+export function templateFromDefaults(settings) {
+  return { ...settings, selected: DEFAULT_OPTION, documentOptions: documentOptions(), excludedParameters: {} };
+}
+
+export function parseTemplate(text) {
+  const data = JSON.parse(text);
+  if (data?.schemaVersion !== 3) return templateFromDefaults(parseDefaults(text));
+  const settings = parseDefaults(JSON.stringify({ ...data, schemaVersion: 2 }));
+  if (!OPTIONS.some(({ code }) => code === data.selected) || !isRecord(data.documentOptions) || !isRecord(data.excludedParameters)) {
+    throw new Error("Не удалось прочитать настройки моего шаблона.");
+  }
+  const excludedParameters = Object.fromEntries(Object.entries(data.excludedParameters).map(([id, variants]) => {
+    if (!Object.hasOwn(settings.values, id) || !isRecord(variants)) throw new Error("Некорректные параметры моего шаблона.");
+    const entries = Object.entries(variants).map(([code, parameter]) => {
+      if (!OPTIONS.some((option) => option.code === code) || settings.values[id][code] !== "-" ||
+          typeof parameter !== "string" || XML_INVALID.test(parameter)) throw new Error("Некорректные параметры моего шаблона.");
+      return [code, parameter.replace(/\r\n?/g, "\n")];
+    });
+    return [id, Object.fromEntries(entries)];
+  }));
+  return { ...settings, selected: data.selected, documentOptions: documentOptions(data.documentOptions), excludedParameters };
+}
+
+export function readTemplate(storage) {
+  const current = storage.getItem(TEMPLATE_STORAGE_KEY);
+  if (current !== null) return parseTemplate(current);
+  const previous = readDefaults(storage);
+  return previous ? templateFromDefaults(previous) : null;
+}
+
+export function writeTemplate(storage, template) {
+  const normalized = parseTemplate(JSON.stringify({ ...template, format: FORMAT, schemaVersion: 3 }));
+  const text = JSON.stringify({ format: FORMAT, schemaVersion: 3, ...normalized });
+  storage.setItem(TEMPLATE_STORAGE_KEY, text);
+  if (storage.getItem(TEMPLATE_STORAGE_KEY) !== text) throw new Error("Браузер не подтвердил сохранение моего шаблона.");
+}
+
+export function captureTemplate(services, settings, selected, document) {
+  if (!OPTIONS.some(({ code }) => code === selected)) throw new Error("Выберите вариант поддержки.");
+  const rows = buildServiceRows(services, settings);
+  const excludedParameters = new Map();
+  for (const { id } of services) {
+    const entries = OPTIONS.flatMap(({ code }) => {
+      const setting = settings.overrides?.get(id)?.get(code) ?? defaultSelection(id, code, settings.defaults);
+      return !setting.included && setting.parameter ? [[code, setting.parameter.replace(/\r\n?/g, "\n")]] : [];
+    });
+    if (entries.length) excludedParameters.set(id, Object.fromEntries(entries));
+  }
+  return { ...snapshotDefaults(initialDefaults({}), rows), selected, documentOptions: documentOptions(document), excludedParameters: Object.fromEntries(excludedParameters) };
+}
+
+export function templateServiceSettings(standard, template, services) {
+  const defaults = overlayDefaults(standard, template);
+  const overrides = new Map();
+  for (const { id } of services) {
+    const entries = Object.entries(template?.excludedParameters?.[id] ?? {}).map(([code, parameter]) => [code, { included: false, parameter }]);
+    if (entries.length) overrides.set(id, new Map(entries));
+  }
+  return { defaults: defaults.values, documentDefaults: defaults.includedInDocument, overrides, documentOverrides: new Map() };
 }
