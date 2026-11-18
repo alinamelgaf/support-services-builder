@@ -31,6 +31,7 @@ jobs:
           export SSB_TEST_TLS_DIR="$(mktemp -d)"
           openssl req -x509 -newkey rsa:2048 -nodes -days 1 -subj /CN=localhost -addext subjectAltName=IP:127.0.0.1 -keyout "$SSB_TEST_TLS_DIR/key.pem" -out "$SSB_TEST_TLS_DIR/cert.pem"
           pnpm test:browser
+          pnpm test:guide
       - run: pnpm package
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:

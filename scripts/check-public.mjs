@@ -15,7 +15,7 @@ const suspicious = [
   ["hardcoded credential", /(?:password|client_secret|access_token|api[_-]?key)\s*[=:]\s*["'][A-Za-z0-9+/_.-]{20,}["']/i],
 ];
 const xmlHosts = new Set(["schemas.openxmlformats.org", "www.w3.org"]);
-const binaryNames = /(?:^|\/)(?:icon-(?:192|512)|guide-(?:install|sources|proposal))\.png$/;
+const binaryNames = /(?:^|\/)(?:icon-(?:192|512)|guide-(?:install|sources|proposal|palette))\.png$/;
 const fixtureText = JSON.stringify(fixture({ unknown: false, adversarial: false }));
 const isContained = (parent, child) => {
   const difference = relative(parent, child);
@@ -60,7 +60,7 @@ async function scan(path) {
 const paths = execFileSync("git", ["ls-files", "-z"], { encoding: "utf8" }).split("\0").filter(Boolean);
 if (!paths.length) throw new Error("Stage the public files before running the repository scan.");
 for (const path of paths) {
-  if (!(known.has(path) || safePath.test(path) || /^docs\/assets\/guide-(?:install|sources|proposal)\.png$/.test(path))) throw new Error(`Unexpected tracked path: ${path}`);
+  if (!(known.has(path) || safePath.test(path) || /^docs\/assets\/guide-(?:install|sources|proposal|palette)\.png$/.test(path))) throw new Error(`Unexpected tracked path: ${path}`);
   await scan(path);
 }
 if (process.argv.includes("--built")) {

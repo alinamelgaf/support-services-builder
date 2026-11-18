@@ -72,7 +72,9 @@ async function checkAppIcon(page) {
 }
 
 async function configure(page) {
-  await page.locator("#open-sources").click();
+  const modal = await page.locator("#open-sources").count();
+  if (modal) await page.locator("#open-sources").click();
+  else await page.locator("#sources-panel").evaluate((el) => { el.open = true; });
   await page.locator("#source-base").fill(SOURCES.base);
   await page.locator("#source-space").fill(SOURCES.space);
   for (const [key, label] of Object.entries(SOURCES.labels)) await page.locator(`#label-${key}`).fill(label);
@@ -80,7 +82,7 @@ async function configure(page) {
   const href = await page.locator("#source-link").getAttribute("href");
   assert.match(href, /^https:\/\/wiki\.example\.invalid\/confluence\/rest\/api\/content\/search\?/);
   assert.equal(new URL(href).searchParams.get("limit"), "50");
-  await page.locator("#close-sources").click();
+  if (modal) await page.locator("#close-sources").click();
 }
 
 async function upload(page, ...pages) {

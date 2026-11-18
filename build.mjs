@@ -24,7 +24,7 @@ const [page, stylesheet, release, guideSource, guideCss] = await Promise.all([
   read("src/page.html"), read("src/app.css"), readRelease(), read("docs/USER_GUIDE.md"), read("src/guide.css"),
 ]);
 const markdown = new MarkdownIt({ html: false });
-const guideImages = new Map(await Promise.all(["install", "sources", "proposal"].map(async (name) => {
+const guideImages = new Map(await Promise.all(["install", "sources", "proposal", "palette"].map(async (name) => {
   const path = `assets/guide-${name}.png`;
   const image = await readFile(join(root, "docs", path));
   return [path, `data:image/png;base64,${image.toString("base64")}`];
