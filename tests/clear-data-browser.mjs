@@ -26,12 +26,19 @@ async function record(page) {
   }));
 }
 async function upload(page, data) {
+  if (await page.locator("#sources-dialog").isVisible()) await closeSources(page);
   await page.locator("#catalog-file").setInputFiles({ name: "synthetic.json", mimeType: "application/json", buffer: Buffer.from(JSON.stringify(data)) });
   await page.waitForFunction(() => !document.querySelector("#upload").disabled && !document.querySelector("#catalog-file").files.length);
   await saved(page);
 }
-const openSources = (page) => page.locator("#open-sources").click();
+const openSources = async (page) => {
+  if (!await page.locator("#sources-dialog").isVisible()) await page.locator("#open-sources").click();
+};
 const closeSources = (page) => page.locator("#close-sources").click();
+async function openDataConfirmation(page) {
+  await openSources(page);
+  await page.locator("#clear-data").click();
+}
 const confirm = (page) => page.locator("#confirm-basis").click();
 async function standardSelected(page) {
   for (const key of sectionKeys) assert.equal(await page.locator("#include-" + key).isChecked(), true, key);
@@ -98,17 +105,18 @@ for (const channel of channels) {
     const baseRecord = await record(page);
     for (const cancel of [() => page.getByRole("button", { name: "Отмена", exact: true }).click(),
       () => page.keyboard.press("Escape"), () => page.getByRole("button", { name: "Закрыть подтверждение", exact: true }).click()]) {
-      await page.locator("#clear-data").click();
+      await openDataConfirmation(page);
       await page.getByRole("heading", { name: "Очистить загруженные данные?", exact: true }).waitFor();
       await cancel();
       assert.equal(await record(page), baseRecord);
       assert.deepEqual(await storage(page), beforeStorage);
     }
     if (channel === channels[0] && output) {
+      await closeSources(page);
       await page.evaluate(() => scrollTo(0, 0));
       await page.mouse.move(1, 1);
       await page.screenshot({ path: join(output, "SSB_DATA_CONTROLS.png") });
-      await page.locator("#clear-data").click();
+      await openDataConfirmation(page);
       await page.locator("#basis-dialog").screenshot({ path: join(output, "SSB_CLEAR_DATA_CONFIRM.png") });
       await page.keyboard.press("Escape");
     }
@@ -120,16 +128,18 @@ for (const channel of channels) {
       };
       window.restoreDraftWrites = () => { IDBDatabase.prototype.transaction = original; };
     });
-    await page.locator("#clear-data").click();
+    await openDataConfirmation(page);
     await confirm(page);
     await page.locator("#data-notice.error").waitFor();
     assert.equal(await record(page), baseRecord);
     assert.equal(await page.locator("#services tr").count(), 6);
     await page.evaluate(() => window.restoreDraftWrites());
     await upload(page, paginate(full, 0, 5));
-    await page.locator("#clear-data").click();
+    await openDataConfirmation(page);
     await confirm(page);
     await page.getByText("Данные Confluence очищены", { exact: true }).waitFor();
+    assert.equal(await page.locator("#sources-dialog").isVisible(), true);
+    assert.equal(await page.locator("#save-sources").evaluate((el) => el === document.activeElement), true);
     assert.equal(await page.locator("#services tr").count(), 0);
     assert.equal(await page.locator("#clear-data").isDisabled(), true);
     assert.equal(await page.locator('[data-format="excel"]').isDisabled(), true);
@@ -144,7 +154,7 @@ for (const channel of channels) {
     assert.deepEqual(await storage(page), beforeStorage);
     await upload(page, paginate(full, 5, full.size));
     assert.equal(await page.locator("#services tr").count(), 0);
-    await page.locator("#clear-data").click();
+    await openDataConfirmation(page);
     await confirm(page);
     await page.getByText("Данные Confluence очищены", { exact: true }).waitFor();
     await page.close();
@@ -158,7 +168,7 @@ for (const channel of channels) {
     await upload(page, paginate(full, 5, full.size));
     assert.equal(await page.locator("#services tr").count(), 0);
     assert.match(await page.locator("#confluence-status").textContent(), /Ошибка загрузки JSON/);
-    await page.locator("#clear-data").click();
+    await openDataConfirmation(page);
     await confirm(page);
     await page.getByText("Данные Confluence очищены", { exact: true }).waitFor();
     await upload(page, full);
@@ -172,9 +182,10 @@ for (const channel of channels) {
     const actions = await page.locator(".source-actions button").evaluateAll((buttons) => buttons.map((button) => {
       const box = button.getBoundingClientRect(); return { text: button.textContent.replace("×", "").trim(), x: box.x, y: box.y, right: box.right };
     }));
-    assert.deepEqual(actions.map(({ text }) => text), ["Очистить настройки источников", "Сохранить источники локально"]);
+    assert.deepEqual(actions.map(({ text }) => text), ["Очистить загруженные данные", "Очистить настройки источников", "Сохранить источники локально"]);
     assert.equal(actions[0].y, actions[1].y);
-    assert.ok(actions[0].x < actions[1].x);
+    assert.equal(actions[1].y, actions[2].y);
+    assert.ok(actions[0].x < actions[1].x && actions[1].x < actions[2].x);
     const fields = await page.locator("#sources-panel input").evaluateAll((inputs) => inputs.map(({ value }) => value));
     for (const cancel of [() => page.getByRole("button", { name: "Отмена", exact: true }).click(),
       () => page.keyboard.press("Escape"), () => page.getByRole("button", { name: "Закрыть подтверждение", exact: true }).click()]) {
@@ -223,6 +234,7 @@ for (const channel of channels) {
     assert.equal(await page.locator("#services tr").count(), 6);
     for (const width of [320, 375, 768, 1440]) {
       await page.setViewportSize({ width, height: 800 });
+      await openSources(page);
       await page.locator("#clear-data").focus();
       await page.keyboard.press("Enter");
       assert.ok(await page.locator("#basis-dialog").evaluate((el) => el.scrollWidth <= el.clientWidth && el.getBoundingClientRect().bottom <= innerHeight));
@@ -235,6 +247,16 @@ for (const channel of channels) {
       await page.keyboard.press("Escape");
       await closeSources(page);
     }
+    await page.setViewportSize({ width: 375, height: 640 });
+    await openDataConfirmation(page);
+    await confirm(page);
+    await page.getByText("Данные Confluence очищены", { exact: true }).waitFor();
+    assert.equal(await page.locator("#sources-dialog").isVisible(), true);
+    assert.ok(await page.locator("#data-notice").evaluate((el) => {
+      const notice = el.getBoundingClientRect();
+      const dialog = document.querySelector("#sources-dialog").getBoundingClientRect();
+      return notice.top >= dialog.top && notice.bottom <= dialog.bottom && notice.bottom <= innerHeight;
+    }));
     assert.deepEqual(errors, []);
     console.log(channel + ": persisted data clearing, independent source reset, failure handling, default sections and templates OK");
   } finally { await browser.close(); }

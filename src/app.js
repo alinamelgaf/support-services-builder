@@ -533,8 +533,10 @@ $("#save-template").addEventListener("click", () => {
 
 async function clearConfluenceData() {
   const main = $("main");
+  const sourcesDialog = $("#sources-dialog");
   setBusy(true);
   main.inert = true;
+  sourcesDialog.inert = true;
   notice("#data-notice", "");
   try {
     const empty = {
@@ -556,8 +558,10 @@ async function clearConfluenceData() {
     notice("#data-notice", error.message, true);
   } finally {
     main.inert = false;
+    sourcesDialog.inert = false;
     setBusy(false);
-    ($("#clear-data").disabled ? $("#upload") : $("#clear-data")).focus();
+    ($("#clear-data").disabled ? $("#save-sources") : $("#clear-data")).focus();
+    $("#data-notice").scrollIntoView({ block: "nearest" });
   }
 }
 $("#clear-data").addEventListener("click", () => confirmBasis("Очистить загруженные данные?",
