@@ -4,7 +4,7 @@ import { buildProposal, DEFAULT_OPTION, defaultSelection, isIncludedInDocument, 
 import {
   captureTemplate, initialDefaults, LEGACY_STORAGE_KEY, overlayDefaults, readTemplate, STORAGE_KEY, TEMPLATE_STORAGE_KEY, templateServiceSettings, writeTemplate,
 } from "./package-defaults.js";
-import { documentOptions, restoreDocumentSources, sectionReason, SECTION_LABELS } from "./document-sections.js";
+import { documentOptions, restoreDocumentSources, sectionReason, SECTION_LABELS, standardDocumentOptions } from "./document-sections.js";
 import { renderRich } from "./rich-dom.js";
 import { generateExcel } from "./excel.js";
 import { generateWord } from "./word.js";
@@ -37,6 +37,7 @@ let draft;
 let draftUnavailable = false;
 let draftTouched = false;
 let sourcesUnsaved = false;
+let hasSavedSources = false;
 const downloads = [...document.querySelectorAll("[data-format]")];
 const slaModes = [...document.querySelectorAll('input[name="sla-mode"]')];
 const slaFormats = [...document.querySelectorAll('input[name="sla-format"]')];
@@ -120,6 +121,15 @@ function draftChanged() {
   draft?.change();
 }
 
+function hasConfluenceData() {
+  return Boolean(state.services.length || state.hasStandard || state.base || Object.keys(state.sections).length || state.catalog || !$("#reset-batch").hidden);
+}
+
+function updateClearSourcesButton() {
+  const entered = [...$("#sources-panel").querySelectorAll("input")].some((field) => field.value.trim());
+  $("#clear-sources").disabled = state.busy || !(hasSavedSources || entered);
+}
+
 function paletteForNewProposal() {
   notice("#palette-notice", "");
   try {
@@ -136,6 +146,8 @@ function setBusy(busy) {
   $("#save-sources").disabled = $("#reset-batch").disabled = busy;
   $("#open-palette").disabled = busy;
   $("#open-sources").disabled = busy;
+  $("#clear-data").disabled = busy || !hasConfluenceData();
+  updateClearSourcesButton();
   for (const button of downloads) button.disabled = busy || !state.services.length;
   renderDocumentOptions();
   showDefaultsStatus();
@@ -325,6 +337,7 @@ function importProblem(message, issues = []) {
 async function importCatalog(files) {
   if (!files.length || state.busy) return;
   setBusy(true);
+  notice("#data-notice", "");
   notice("#catalog-notice", "Проверяем каталог…");
   $("#confluence-status").className = "confluence-status";
   $("#confluence-status").textContent = "Проверяем JSON…";
@@ -351,7 +364,6 @@ async function importCatalog(files) {
       throw new Error("В выбранном файле нет корректных карточек услуг. Проверьте поля Page Properties и сообщения импорта.");
     }
     const dirty = Boolean(state.services.length && hasDraftChanges());
-    const initial = !state.services.length;
     const next = result.usableStandard || !state.hasStandard ? result.standard : state.standard;
     state.hasStandard ||= result.usableStandard;
     state.standard = next;
@@ -363,7 +375,6 @@ async function importCatalog(files) {
       state.defaults = overlayDefaults(next, state.defaults);
       renderServices();
     } else {
-      if (initial && state.local) state.layer = "local";
       applyLayer(state.layer, false);
     }
     const kind = result.legacy ? "прежний формат каталога" : "страницы REST объединены";
@@ -418,7 +429,7 @@ function currentConfiguration() {
 function basisConfiguration(layer) {
   const template = layer === "local" ? state.local : null;
   return captureTemplate(state.services, templateServiceSettings(state.standard, template, state.services),
-    template?.selected ?? DEFAULT_OPTION, template?.documentOptions);
+    template?.selected ?? DEFAULT_OPTION, template ? template.documentOptions : standardDocumentOptions(state.sections, DEFAULT_OPTION));
 }
 
 function showDefaultsStatus() {
@@ -445,7 +456,7 @@ function applyLayer(layer, save = true) {
   state.overrides = settings.overrides;
   state.documentOverrides = settings.documentOverrides;
   state.selected = template?.selected ?? DEFAULT_OPTION;
-  state.documentOptions = documentOptions(template?.documentOptions);
+  state.documentOptions = template ? documentOptions(template.documentOptions) : standardDocumentOptions(state.sections, DEFAULT_OPTION);
   state.draftEditsPreserved = false;
   for (const radio of document.querySelectorAll('input[name="proposal-variant"]')) radio.checked = radio.value === state.selected;
   renderServices();
@@ -456,10 +467,11 @@ function applyLayer(layer, save = true) {
 }
 
 let confirmedBasisAction;
-function confirmBasis(title, detail, label, action) {
+function confirmBasis(title, detail, label, action, danger = false) {
   $("#basis-dialog-heading").textContent = title;
   $("#basis-dialog-detail").textContent = detail;
   $("#confirm-basis").textContent = label;
+  $("#confirm-basis").classList.toggle("button-danger", danger);
   confirmedBasisAction = action;
   $("#basis-dialog").showModal();
 }
@@ -518,6 +530,59 @@ $("#save-template").addEventListener("click", () => {
       "Заменить шаблон", saveMyTemplate);
   } else saveMyTemplate();
 });
+
+async function clearConfluenceData() {
+  const main = $("main");
+  setBusy(true);
+  main.inert = true;
+  notice("#data-notice", "");
+  try {
+    const empty = {
+      ...snapshotProposal(), selected: DEFAULT_OPTION, services: [], sections: {}, base: "", catalog: null,
+      standard: initialDefaults(), defaults: initialDefaults(), hasStandard: false, layer: "corporate",
+      overrides: new Map(), documentOverrides: new Map(), documentOptions: documentOptions(), draftEditsPreserved: false,
+    };
+    if (!draft || !await draft.replace(empty)) throw new Error("Не удалось очистить данные. Проверьте сообщение о сохранении черновика.");
+    batch.reset();
+    $("#reset-batch").hidden = true;
+    restoreProposal(empty);
+    for (const id of ["detail-id", "service-heading", "detail-description", "detail-conditions", "detail-base"]) $("#" + id).replaceChildren();
+    $("#detail-source").removeAttribute("href");
+    $("#detail-source").hidden = true;
+    notice("#export-notice", "");
+    notice("#draft-notice", "");
+    notice("#data-notice", "Данные Confluence очищены", false, true);
+  } catch (error) {
+    notice("#data-notice", error.message, true);
+  } finally {
+    main.inert = false;
+    setBusy(false);
+    ($("#clear-data").disabled ? $("#upload") : $("#clear-data")).focus();
+  }
+}
+$("#clear-data").addEventListener("click", () => confirmBasis("Очистить загруженные данные?",
+  "Будут удалены загруженный каталог услуг, дополнительные данные Confluence и текущая конфигурация предложения.\n\nДля продолжения работы потребуется повторно загрузить JSON.\n\nМой шаблон, палитра документа и настройки источников сохранятся.",
+  "Очистить данные", clearConfluenceData, true));
+
+$("#clear-sources").addEventListener("click", () => confirmBasis("Очистить настройки источников?",
+  "Будут удалены сохранённые адрес Confluence, ключ пространства и настройки меток страниц.\n\nЗагруженный каталог услуг, текущая конфигурация предложения, мой шаблон и палитра документа сохранятся.",
+  "Очистить настройки", () => {
+    try {
+      window.localStorage.removeItem(SOURCE_KEY);
+      if (window.localStorage.getItem(SOURCE_KEY) !== null) throw new Error();
+      sources = validateSources();
+      sourcesUnsaved = false;
+      hasSavedSources = false;
+      $("#source-base").value = $("#source-space").value = "";
+      for (const [key] of SOURCE_TYPES) $("#label-" + key).value = "";
+      updateSourcesLink();
+      updateClearSourcesButton();
+      $("#save-sources").focus();
+      notice("#sources-notice", "Настройки источников очищены", false, true);
+    } catch {
+      notice("#sources-notice", "Не удалось очистить настройки источников. Проверьте хранилище браузера.", true);
+    }
+  }, true));
 
 async function exportProposal(format) {
   if (state.busy || !state.services.length) return;
@@ -608,6 +673,7 @@ function updateSourcesLink() {
 
 try {
   const saved = window.localStorage.getItem(SOURCE_KEY);
+  hasSavedSources = saved !== null;
   if (saved) sources = validateSources(JSON.parse(saved));
 } catch {
   notice("#sources-notice", "Не удалось восстановить локальные настройки источников.", true);
@@ -624,17 +690,12 @@ for (const [key, label] of SOURCE_TYPES) {
   $("#source-labels").append(field);
 }
 updateSourcesLink();
+updateClearSourcesButton();
+$("#sources-panel").addEventListener("input", updateClearSourcesButton);
 $("#save-sources").addEventListener("click", () => {
   try {
     const next = validateSources({ base: $("#source-base").value, space: $("#source-space").value,
       labels: Object.fromEntries(SOURCE_TYPES.map(([key]) => [key, $(`#label-${key}`).value])), });
-    if (JSON.stringify(next) !== JSON.stringify(sources)) {
-      const pending = !$("#reset-batch").hidden;
-      const configured = sources.base || sources.space || Object.values(sources.labels).some(Boolean);
-      if ((pending || configured) && !window.confirm(pending
-        ? "Изменить источники и сбросить ожидающие страницы REST?" : "Заменить сохранённые настройки источников Confluence?")) return;
-      if (pending) resetBatch();
-    }
     sources = next;
     updateSourcesLink();
     const text = JSON.stringify(sources);
@@ -642,6 +703,8 @@ $("#save-sources").addEventListener("click", () => {
       window.localStorage.setItem(SOURCE_KEY, text);
       if (window.localStorage.getItem(SOURCE_KEY) !== text) throw new Error();
       sourcesUnsaved = false;
+      hasSavedSources = true;
+      updateClearSourcesButton();
       notice("#sources-notice", "Источники сохранены в этом браузере.", false, true);
     } catch {
       sourcesUnsaved = true;
@@ -652,7 +715,8 @@ $("#save-sources").addEventListener("click", () => {
   }
 });
 $("#reset-batch").addEventListener("click", () => {
-  if (window.confirm("Удалить ожидающие страницы и начать новую выгрузку?")) resetBatch();
+  confirmBasis("Начать новую выгрузку?", "Ожидающие страницы REST будут удалены. Загруженный каталог останется доступен.",
+    "Очистить страницы", resetBatch, true);
 });
 
 function snapshotProposal() {

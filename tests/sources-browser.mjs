@@ -43,7 +43,7 @@ for (const channel of channels) {
     assert.equal(await status(page).textContent(), "Данные Confluence не загружены");
     assert.equal(await page.locator(".catalog-panel, #catalog-heading").count(), 0);
     assert.equal(await page.locator("main > .panel").first().getAttribute("aria-labelledby"), "proposal-heading");
-    assert.deepEqual(await page.locator(".proposal-heading button").allTextContents(), ["Источники Confluence", "Загрузить JSON"]);
+    assert.deepEqual((await page.locator(".proposal-heading button").allTextContents()).map((text) => text.replace("×", "").trim()), ["Источники Confluence", "Очистить данные", "Загрузить JSON"]);
     assert.deepEqual(await page.locator(".button-primary").evaluateAll((buttons) => buttons.map((button) => button.textContent)),
       ["Загрузить JSON", "Скачать Excel", "Скачать Word"]);
     const normalStyles = await page.locator("button.button:not(.button-primary):not(.button-danger):enabled, a.button:not([hidden])").evaluateAll((buttons) =>

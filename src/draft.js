@@ -56,6 +56,7 @@ export async function openDraftStore(scope) {
 export function createDraftAutosave(store, snapshot, status) {
   let dirty = false;
   let writing = null;
+  let replacing = false;
 
   function flush() {
     if (!dirty && !writing) return Promise.resolve(true);
@@ -79,12 +80,25 @@ export function createDraftAutosave(store, snapshot, status) {
   }
 
   return {
+    async replace(proposal) {
+      if (!await flush()) return false;
+      replacing = true;
+      try {
+        await store.save(proposal);
+        return true;
+      } catch (error) {
+        status("Не удалось сохранить черновик. " + (error?.message || "Проверьте хранилище браузера."), true);
+        return false;
+      } finally {
+        replacing = false;
+      }
+    },
     change() {
       dirty = true;
       status("Сохраняем черновик…");
       void flush();
     },
     flush,
-    get unsaved() { return dirty || writing !== null; },
+    get unsaved() { return dirty || writing !== null || replacing; },
   };
 }

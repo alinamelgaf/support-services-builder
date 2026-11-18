@@ -48,6 +48,12 @@ export function sectionReason(key, sources, selected) {
   return "";
 }
 
+export function standardDocumentOptions(sources, selected) {
+  return documentOptions({ included: Object.fromEntries(Object.keys(SECTION_LABELS).map((key) => [
+    key, !sectionReason(key, sources, selected),
+  ])) });
+}
+
 export function buildDocumentSections(sources, options, selected, packages, bases) {
   const { included, slaMode, slaFormat } = documentOptions(options);
   const data = (key) => included[key] && !sectionReason(key, sources, selected) ? sources[key].data : null;

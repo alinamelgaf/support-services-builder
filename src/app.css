@@ -104,6 +104,7 @@ main { padding-bottom: var(--space-xl); }
   --button-hover: #69231f;
   --button-active: #541b18;
 }
+.button-delete { --button-ink: var(--danger); }
 .button:hover:not(:disabled) { background: var(--button-hover, var(--blue-soft)); }
 .button:active:not(:disabled) { background: var(--button-active, var(--blue-pressed)); }
 .button:disabled { background: var(--disabled-bg); color: var(--disabled-ink); border-color: var(--line); cursor: default; }
@@ -216,6 +217,7 @@ dialog .service-id { margin: 0 0 var(--space-xs); }
 #palette-dialog { --dialog-width: 680px; }
 #sources-dialog { --dialog-width: 800px; }
 #sources-dialog .details-body { overflow-wrap: anywhere; }
+.source-actions { justify-content: flex-end; margin-top: var(--space-l); }
 #palette-reset-dialog { --dialog-width: 460px; }
 .palette-close { min-width: var(--control-height); padding-inline: var(--space-s); font-size: 20px; line-height: 1; }
 .palette-body p:first-child { margin-top: 0; }
@@ -271,6 +273,7 @@ dialog .service-id { margin: 0 0 var(--space-xs); }
 .basis-options label:has(:checked) { background: var(--green-pale); border-color: #68a493; }
 .basis-options label:has(:disabled) { color: var(--muted); cursor: default; }
 #basis-dialog { --dialog-width: 520px; }
+#basis-dialog-detail { white-space: pre-line; }
 .setup > fieldset { margin-top: var(--space-m); }
 .comparison .defaults-tools .notice { margin: var(--space-s) 0 0; }
 

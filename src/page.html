@@ -42,11 +42,13 @@
         <h2 id="proposal-heading">Настройки предложения</h2>
         <div class="actions">
           <button type="button" class="button" id="open-sources" aria-haspopup="dialog" disabled>Источники Confluence</button>
+          <button type="button" class="button button-delete" id="clear-data" aria-haspopup="dialog" disabled><span aria-hidden="true">×</span>Очистить данные</button>
           <button type="button" id="upload" class="button button-primary" disabled>Загрузить JSON</button>
           <input type="file" id="catalog-file" accept=".json,application/json" multiple hidden disabled>
         </div>
       </div>
       <p id="confluence-status" class="confluence-status" role="status">Данные Confluence не загружены</p>
+      <p id="data-notice" class="notice" role="status" hidden></p>
       <p class="draft-status" id="draft-notice" role="status" hidden></p>
       <fieldset>
         <legend>Вариант поддержки</legend>
@@ -139,8 +141,6 @@
           <label>Ключ пространства <span class="optional">необязательно</span><input id="source-space" autocomplete="off"></label>
         </div>
         <div class="fields source-fields" id="source-labels"></div>
-        <button class="button" type="button" id="save-sources">Сохранить источники локально</button>
-        <p id="sources-notice" class="notice" role="status" hidden></p>
       </div>
       <button class="button" type="button" id="reset-batch" hidden>Начать новую выгрузку</button>
       <p id="catalog-notice" class="notice" role="status" hidden></p>
@@ -148,6 +148,11 @@
         <summary id="issues-summary"></summary>
         <ul id="issue-list"></ul>
       </details>
+      <div class="actions source-actions">
+        <button class="button button-delete" type="button" id="clear-sources" aria-haspopup="dialog" disabled><span aria-hidden="true">×</span>Очистить настройки источников</button>
+        <button class="button" type="button" id="save-sources">Сохранить источники локально</button>
+      </div>
+      <p id="sources-notice" class="notice" role="status" hidden></p>
     </div>
   </dialog>
   <dialog id="palette-dialog" aria-labelledby="palette-heading">

@@ -44,3 +44,29 @@ test("draft flush waits for the newest edit and reports write failure", async ()
   assert.equal(await draft.flush(), true);
   assert.equal(saved.at(-1), "третье изменение");
 });
+
+test("draft replacement waits for pending edits and reports failed clearing without claiming success", async () => {
+  let finish;
+  let current = "текущие данные";
+  const written = [];
+  let fail = false;
+  const statuses = [];
+  const store = { async save(value) {
+    if (!written.length) await new Promise((resolve) => { finish = resolve; });
+    if (fail) throw new Error("Синтетическая ошибка очистки");
+    written.push(value);
+  } };
+  const draft = createDraftAutosave(store, () => current, (...args) => statuses.push(args));
+  draft.change();
+  current = "последняя правка";
+  draft.change();
+  const cleared = draft.replace("пустое предложение");
+  assert.equal(draft.unsaved, true);
+  finish();
+  assert.equal(await cleared, true);
+  assert.deepEqual(written, ["текущие данные", "последняя правка", "пустое предложение"]);
+  fail = true;
+  assert.equal(await draft.replace("другое пустое предложение"), false);
+  assert.equal(written.at(-1), "пустое предложение");
+  assert.match(statuses.at(-1)[0], /Синтетическая ошибка очистки/);
+});

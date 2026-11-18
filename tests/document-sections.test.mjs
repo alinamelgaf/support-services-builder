@@ -3,7 +3,7 @@ import { test } from "node:test";
 import ExcelJS from "exceljs";
 import JSZip from "jszip";
 import { createImportBatch, queryUrl, validateSources } from "../src/confluence.js";
-import { documentOptions, restoreDocumentSources, sectionReason, SEVERITY_CODES, SLA_CODES, SLA_METRICS } from "../src/document-sections.js";
+import { documentOptions, restoreDocumentSources, sectionReason, SEVERITY_CODES, SLA_CODES, SLA_METRICS, standardDocumentOptions } from "../src/document-sections.js";
 import { generateExcel } from "../src/excel.js";
 import { buildProposal, OPTIONS } from "../src/proposal.js";
 import { plainText } from "../src/rich-text.js";
@@ -24,6 +24,19 @@ function proposal(result, selected, document, palette) {
     documentDefaults: result.standard.includedInDocument, confluenceBases: [BASE],
   });
 }
+
+test("standard document includes available implemented sources while old drafts and template options keep their selection", () => {
+  const options = standardDocumentOptions(read().sections, "Standard");
+  assert.deepEqual(options.included, { intro: true, sla: true, severity: true, raci: false, assumptions: true, glossary: true });
+  assert.equal(options.slaMode, "selected");
+  assert.equal(options.slaFormat, "comparison");
+  const missing = read(referenceFixture({ alterSla: () => null }));
+  assert.equal(standardDocumentOptions(missing.sections, "Standard").included.sla, false);
+  assert.equal(standardDocumentOptions({ intro: { data: { Standard: [] } }, glossary: { error: "Некорректный источник" } }, "Standard").included.intro, false);
+  assert.equal(standardDocumentOptions({}, "Standard").included.glossary, false);
+  assert.equal(documentOptions().included.sla, false);
+  assert.equal(documentOptions({ included: { sla: false, intro: false }, slaMode: "all", slaFormat: "separate" }).included.sla, false);
+});
 
 test("recognizes the two SLA tables without working hours in a complete paginated REST import", () => {
   const data = referenceFixture();

@@ -115,7 +115,7 @@ for (const channel of channels) {
     await applyBasis(page, "corporate");
     assert.equal(await parameter(page).inputValue(), "12 часов");
     assert.equal(await page.locator('#variants input[value="Standard"]').isChecked(), true);
-    assert.equal(await page.locator("#include-sla").isChecked(), false);
+    assert.equal(await page.locator("#include-sla").isChecked(), true);
     assert.equal(await page.locator('[name="sla-mode"][value="selected"]').isChecked(), true);
     assert.equal(await page.locator('[name="sla-format"][value="comparison"]').isChecked(), true);
     assert.equal(await page.getByRole("checkbox", { name: "Включить в документ TS-1.A", exact: true }).isChecked(), true);

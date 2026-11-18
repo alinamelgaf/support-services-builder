@@ -87,11 +87,12 @@ for (const [index, channel] of channels.entries()) {
     assert.equal(await page.locator("#reason-raci").textContent(), "Пока не реализовано");
     for (const key of keys) {
       assert.equal(await include(page, key).isEnabled(), true);
-      assert.equal(await include(page, key).isChecked(), false);
+      assert.equal(await include(page, key).isChecked(), true);
     }
-    assert.equal(await mode(page, "selected").isDisabled(), true);
+    assert.equal(await mode(page, "selected").isDisabled(), false);
     assert.equal(await page.locator("#sla-formats").isVisible(), false);
     await include(page, "intro").uncheck();
+    for (const key of keys) await include(page, key).uncheck();
     for (const format of ["excel", "word"]) {
       const empty = await exportFile(page, format);
       for (const name of names) assert.ok(!empty.sections.includes(name));
