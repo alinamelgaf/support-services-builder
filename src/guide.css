@@ -1,5 +1,5 @@
-:root { --radius-panel: 8px; color-scheme: light; font: 16px/1.55 "Segoe UI", Arial, sans-serif; color: #172c43; background: #f0f4f8; }
-main { box-sizing: border-box; max-width: 900px; margin: 28px auto; padding: 36px 54px; background: white; border-radius: var(--radius-panel); }
+:root { --radius-panel: 6px; color-scheme: light; font: 16px/1.55 "Segoe UI", Arial, sans-serif; color: #172c43; background: #f0f4f8; }
+main { box-sizing: border-box; max-width: 900px; margin: 21px auto; padding: 32px 48px; background: white; border-radius: var(--radius-panel); }
 h1, h2 { line-height: 1.2; }
 h1 { font-size: 2rem; }
 h2 { margin: 1.6em 0 .55em; font-size: 1.35rem; }
@@ -9,7 +9,7 @@ a { color: #164c80; }
 code { font-size: .9em; overflow-wrap: anywhere; }
 img { display: block; max-width: 100%; height: auto; margin: 1em 0; border: 1px solid #d9e3ed; }
 @media (max-width: 620px) {
-  main { margin: 0; padding: 20px; }
+  main { margin: 0; padding: 18px; }
 }
 @page { size: A4; margin: 17mm 18mm; }
 @media print {
