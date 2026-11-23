@@ -47,7 +47,7 @@ async function upload(page) {
   await saved(page);
 }
 
-const paletteHint = "В режиме „Авто“ SSB подберёт более контрастный цвет текста.";
+const paletteHint = "В режиме «Авто» SSB подберёт более контрастный цвет текста.";
 async function checkHint(page) {
   const hint = page.locator("#palette-hint");
   assert.equal(await page.getByText(paletteHint, { exact: true }).count(), 1);
