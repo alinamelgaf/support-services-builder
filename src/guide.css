@@ -1,5 +1,5 @@
-:root { color-scheme: light; font: 16px/1.55 "Segoe UI", Arial, sans-serif; color: #172c43; background: #f0f4f8; }
-main { box-sizing: border-box; max-width: 900px; margin: 28px auto; padding: 36px 54px; background: white; }
+:root { --radius-panel: 8px; color-scheme: light; font: 16px/1.55 "Segoe UI", Arial, sans-serif; color: #172c43; background: #f0f4f8; }
+main { box-sizing: border-box; max-width: 900px; margin: 28px auto; padding: 36px 54px; background: white; border-radius: var(--radius-panel); }
 h1, h2 { line-height: 1.2; }
 h1 { font-size: 2rem; }
 h2 { margin: 1.6em 0 .55em; font-size: 1.35rem; }
