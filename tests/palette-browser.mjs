@@ -47,7 +47,26 @@ async function upload(page) {
   await saved(page);
 }
 
+const paletteHint = "В режиме „Авто“ SSB подберёт более контрастный цвет текста.";
+async function checkHint(page) {
+  const hint = page.locator("#palette-hint");
+  assert.equal(await page.getByText(paletteHint, { exact: true }).count(), 1);
+  assert.equal(await hint.isVisible(), true);
+  assert.equal(await page.locator("#palette-warning").count(), 0);
+  assert.doesNotMatch(await page.locator("#palette-dialog").innerText(), /4[,.]5\s*:\s*1/);
+  const style = await hint.evaluate((el) => {
+    const s = getComputedStyle(el);
+    return { background: s.backgroundColor, color: s.color, border: s.borderWidth, padding: s.padding, font: s.font, height: el.getBoundingClientRect().height, followsPreview: el.previousElementSibling.id === "palette-preview", children: el.children.length };
+  });
+  assert.equal(style.background, "rgba(0, 0, 0, 0)");
+  assert.equal(style.border, "0px");
+  assert.equal(style.padding, "0px");
+  assert.equal(style.followsPreview, true);
+  assert.equal(style.children, 0);
+  return style;
+}
 async function checkPreview(page, main, mainText, proposal, proposalText, selectedFill) {
+  await checkHint(page);
   const computed = await page.locator("#palette-preview").evaluate((table) => {
     const [first, selected] = table.querySelectorAll("th");
     return [getComputedStyle(first).backgroundColor, getComputedStyle(first).color,
@@ -145,7 +164,7 @@ for (const [index, channel] of channels.entries()) {
     await open(page);
     assert.equal(await hex(page, "Основной цвет").inputValue(), "#F7DC94");
     await mode(page, "main", "default").check();
-    assert.equal(await page.locator("#palette-warning").isVisible(), true);
+    await checkHint(page);
     await mode(page, "main", "custom").check();
     assert.equal(await hex(page, "Основной цвет — цвет текста").inputValue(), "#112233");
     await mode(page, "main", "auto").check();
@@ -243,6 +262,22 @@ for (const [index, channel] of channels.entries()) {
       }
       await page.keyboard.press("Escape");
     }
+    await open(page);
+    await page.locator('[name="palette-mode"][value="base"]').check();
+    const hintStyle = await checkHint(page);
+    await custom(page).check();
+    for (const background of ["#FFFFFF", "#000000"]) {
+      await hex(page, "Основной цвет").fill(background);
+      await hex(page, "Цвет предложения").fill(background);
+      for (const mainMode of ["default", "auto", "custom"]) for (const proposalMode of ["default", "auto", "custom"]) {
+        await mode(page, "main", mainMode).check();
+        await mode(page, "proposal", proposalMode).check();
+        assert.deepEqual(await checkHint(page), hintStyle);
+      }
+    }
+    await page.locator('[name="palette-mode"][value="base"]').check();
+    assert.deepEqual(await checkHint(page), hintStyle);
+    await page.keyboard.press("Escape");
     assert.deepEqual(errors, []);
     assert.deepEqual(external, []);
     console.log(channel + ": palette autosave, base/custom retention, errors, legacy migration, preview and Word/Excel OK");

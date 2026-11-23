@@ -248,7 +248,7 @@ dialog .service-id { margin: 0 0 var(--space-xs); }
 #palette-preview td { background: #fff; }
 #palette-preview tr:nth-child(even) td { background: var(--preview-band); }
 #palette-preview tr td:last-child { background: var(--preview-selected); }
-.palette-warning { color: var(--warning); background: var(--warning-bg); font-size: var(--text-small); }
+.palette-hint { margin-top: var(--space-s); color: var(--muted); font-size: var(--text-small); }
 .palette-links { display: flex; flex-wrap: wrap; align-items: baseline; gap: var(--action-gap) var(--action-group-gap); margin-top: var(--space-m); font-size: var(--text-small); }
 .palette-links h3 { margin: 0; }
 .palette-actions { margin-top: var(--action-group-gap); }

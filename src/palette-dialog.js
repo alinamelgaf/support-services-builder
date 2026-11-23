@@ -1,5 +1,5 @@
 import {
-  documentPalette, hexColor, MIN_CONTRAST, paletteSettings, resolveDocumentPalette,
+  documentPalette, hexColor, paletteSettings, resolveDocumentPalette,
 } from "./export-palette.js";
 
 const COLOR_BLOCKS = [["main", "Основной цвет"], ["proposal", "Цвет предложения"]];
@@ -31,10 +31,6 @@ export function setupPaletteDialog({ getPalette, changePalette }) {
       proposal: colors.proposal.background, "proposal-text": colors.proposal.text,
       band: colors.band, selected: colors.selectedFill,
     })) preview.style.setProperty(`--preview-${name}`, value);
-    const warnings = COLOR_BLOCKS.filter(([key]) => colors[key].contrast < MIN_CONTRAST).map(([, label]) => label.toLowerCase());
-    const warning = dialog.querySelector("#palette-warning");
-    warning.textContent = warnings.length ? `Контраст текста ниже 4,5:1 (${warnings.join(", ")}). В режиме «Авто» SSB подберёт более контрастный цвет текста.` : "";
-    warning.hidden = !warnings.length;
   }
 
   function validate(input, valid) {
