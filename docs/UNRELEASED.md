@@ -22,3 +22,7 @@
 [Отчёт об установке, ярлыках и обновлениях PWA](PWA_IDENTITY_AUDIT_REPORT.md)
 
 [Инструкция](LOCAL_DEVELOPMENT.md) · [Отчёт о локальной среде](LOCAL_DEVELOPMENT_REPORT.md) · [Отчёт о разделах Confluence и SLA](CONFLUENCE_SECTIONS_REPORT.md) · [Отчёт о представлениях SLA](SLA_LAYOUT_REPORT.md) · [Отчёт об ориентации SLA и прокрутке Excel](SLA_TIMING_REPORT.md) · [Отчёт о названиях пакетов](SUPPORT_LABELS_REPORT.md) · [Отчёт о проверке обновлений PWA](PWA_UPDATE_PREVIEW_REPORT.md) · [Отчёт об оформлении уведомлений и выгрузок](INTERFACE_EXPORT_POLISH_REPORT.md) · [Отчёт о верхних кнопках](HEADER_LAYOUT_REPORT.md) · [Отчёт о сравнительной SLA в Word и прокрутке Excel](WORD_SLA_EXCEL_COLUMNS_REPORT.md) · [Отчёт о заголовках таблиц](TABLE_HEADERS_REPORT.md)
+
+## Кандидат 1.3.1
+
+Выпуск согласован 23 ноября 2026 г. Фактический diff к 1.3.0: компактная геометрия и постоянная подсказка палитры. 39 тестов, регрессия Chrome/Edge, обе поставки, dev-изоляция, руководство и реальное тестовое обновление PWA 1.3.0 → 1.3.1 с сохранением настроек пройдены. Ранее отмеченная ошибка CacheStorage Chrome в свежих профилях с короткими путями не повторилась. [Подробный отчёт](SSB_1.3.1_RELEASE_REPORT.md). Ожидаются аудит итогового коммита, CI и обязательное ручное подтверждение `public-release`. Пункты выше снимаются с учёта только после публикации.

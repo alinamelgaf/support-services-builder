@@ -193,6 +193,8 @@ async function checkStandalone(browser) {
   } finally { await context.close(); }
 }
 
+const preferenceKeys = ["ssb:confluence-sources:v1", "support-services-builder-defaults:v2", "support-services-builder-defaults:v3", "ssb:document-palette:v1"];
+const preferences = (page) => page.evaluate((keys) => Object.fromEntries(keys.map((key) => [key, localStorage.getItem(key)])), preferenceKeys);
 async function checkHosted(channel) {
   served = "initial";
   const folder = resolve(process.env.SSB_QA_DIR ?? tmpdir());
@@ -275,6 +277,18 @@ async function checkHosted(channel) {
     await stale.getByText(/Черновик изменён в другой вкладке/).waitFor();
     await stale.close({ runBeforeUnload: false });
 
+    if (await page.locator("#open-palette").count()) {
+      await page.locator("#open-palette").click();
+      await page.locator('[name="palette-mode"][value="custom"]').check();
+      await page.getByRole("textbox", { name: "Основной цвет — HEX", exact: true }).fill("#345678");
+      await page.getByRole("textbox", { name: "Цвет предложения — HEX", exact: true }).fill("#FFFFFF");
+      await page.locator('[name="palette-text-main"][value="auto"]').check();
+      await page.locator('[name="palette-text-proposal"][value="auto"]').check();
+      await page.locator("#close-palette").click();
+      await page.getByText("Черновик сохранён на этом устройстве.", { exact: true }).waitFor({ state: "attached" });
+    }
+    const preferencesBeforeUpdate = await preferences(page);
+
     served = "broken";
     await page.locator("#update").click();
     await page.getByText(/Обновление не подготовлено/).waitFor();
@@ -295,6 +309,7 @@ async function checkHosted(channel) {
     assert.equal(await standardParam(page).inputValue(), "Черновик перед обновлением");
     assert.equal(await page.getByRole("radio", { name: /^Extended/ }).isChecked(), true);
     assert.equal(await page.locator("#include-intro").isChecked(), legacyIntroEditor);
+    assert.deepEqual(await preferences(page), preferencesBeforeUpdate);
 
 
     assert.equal(await page.getByRole("checkbox", { name: "Включить в документ TS-1.A", exact: true }).isChecked(), false);
@@ -327,6 +342,7 @@ async function checkHosted(channel) {
     assert.equal(await reopened.locator("#version").textContent(), `Версия ${updatedVersion}`);
     await reopened.getByText("Черновик восстановлен").waitFor();
     assert.equal(await standardParam(reopened).inputValue(), "Черновик перед обновлением");
+    assert.deepEqual(await preferences(reopened), preferencesBeforeUpdate);
     const differences = reopened.locator("input[name=proposal-basis][value=local]");
     assert.equal(await differences.isVisible(), true);
 
